@@ -14,7 +14,9 @@ export interface DiscoveredDomain {
   routes: DiscoveredRoute[];
 }
 
-const DOMAINS_DIR = join(__dirname, "..", "domains");
+// This file lives at platform/domains/, so the contributor domains/ folder is
+// two levels up.
+const DOMAINS_DIR = join(__dirname, "..", "..", "domains");
 
 /**
  * Filesystem is the source of truth.

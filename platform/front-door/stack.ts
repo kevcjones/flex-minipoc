@@ -15,17 +15,21 @@ import {
 import { HttpOrigin } from "aws-cdk-lib/aws-cloudfront-origins";
 import { Construct } from "constructs";
 
-import { CERT_ARN, GATEWAY_HOST, PUBLIC_HOST } from "../config";
+import { CERT_ARN, GATEWAY_HOST, PUBLIC_HOST } from "../../config";
 
 /**
- * Flex core. Owns the front door and nothing domain-specific.
+ * The front door. Platform-owned. Owns CloudFront and the shared custom domain,
+ * and nothing domain-specific.
  *
  *   client -> CloudFront (one static origin) -> custom domain -> [base path fan-out]
  *
- * DNS lives in Cloudflare, so this stack does not manage any records. It emits
- * the two targets you need to create CNAMEs for (see outputs and README).
+ * DNS lives in Cloudflare, so this stack manages no records. It emits the two
+ * targets you need to create CNAMEs for (see outputs and README).
+ *
+ * Deployed stack id stays "FlexMiniCore" for continuity (renaming the id would
+ * recreate CloudFront and break the live CNAME).
  */
-export class CoreStack extends Stack {
+export class FrontDoorStack extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
 

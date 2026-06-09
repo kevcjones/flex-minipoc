@@ -9,7 +9,7 @@ import { Runtime } from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Construct } from "constructs";
 
-import { GATEWAY_HOST, PUBLIC_HOST } from "../config";
+import { GATEWAY_HOST, PUBLIC_HOST } from "../../config";
 import { DiscoveredRoute } from "./discover";
 
 interface DomainStackProps extends StackProps {
@@ -18,17 +18,22 @@ interface DomainStackProps extends StackProps {
 }
 
 /**
- * One independent domain. Its routes are discovered from the folder tree, so
- * the gateway shape is a direct reflection of domains/<name>/...
+ * The per-domain gateway builder. Platform-owned. Turns a discovered domain
+ * (folder tree) into an independent gateway whose shape mirrors domains/<name>.
  *
- * Adding a function under this domain (a new handler.ts) and deploying only
- * this stack adds the route. Core and the other domains are untouched.
+ * Adding a function under a domain (a new handler.ts) and deploying only this
+ * stack adds the route. The front door and the other domains are untouched.
  */
 export class DomainStack extends Stack {
   constructor(scope: Construct, id: string, props: DomainStackProps) {
     super(scope, id, props);
 
     const { domainName, routes } = props;
+
+    // Injected so the SDK fragments can reach the core capabilities. Derived
+    // from the front-door host, so there is no cross-stack dependency.
+    const udpUrl = `https://${PUBLIC_HOST}/udp`;
+    const telemetryUrl = `https://${PUBLIC_HOST}/telemetry`;
 
     const api = new RestApi(this, "Gateway", {
       restApiName: `flex-mini-${domainName}`,
@@ -44,6 +49,7 @@ export class DomainStack extends Stack {
         handler: "handler",
         runtime: Runtime.NODEJS_20_X,
         timeout: Duration.seconds(10),
+        environment: { FLEX_UDP_URL: udpUrl, FLEX_TELEMETRY_URL: telemetryUrl },
       });
 
       // Base path mapping strips "<domainName>", so /<domainName>/<apiPath>

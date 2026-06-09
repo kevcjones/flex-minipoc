@@ -3,6 +3,8 @@
     "target": "ES2022",
     "module": "commonjs",
     "moduleResolution": "node",
+    "baseUrl": ".",
+    "paths": { "@flex/sdk/*": ["core/*/sdk"] },
     "lib": ["ES2022"],
     "strict": true,
     "esModuleInterop": true,
@@ -13,6 +15,12 @@
     "resolveJsonModule": true,
     "types": ["node"]
   },
-  "include": ["bin/**/*.ts", "lib/**/*.ts", "config.ts"],
+  "include": [
+    "bin/**/*.ts",
+    "platform/**/*.ts",
+    "core/**/stack.ts",
+    "core/**/sdk.ts",
+    "config.ts"
+  ],
   "exclude": ["node_modules", "cdk.out"]
 }

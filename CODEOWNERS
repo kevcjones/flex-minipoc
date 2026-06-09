@@ -1,0 +1,17 @@
+# Ownership zones. Every top-level area maps to a team.
+
+# Platform team: the front door and the per-domain gateway build system.
+/platform/            @platform-team
+/bin/                 @platform-team
+
+# The SDK http module is platform framework code (not a capability).
+/core/http/           @platform-team
+
+# Flex core capabilities: each owned by its capability team.
+/core/udp/            @udp-team
+/core/telemetry/      @telemetry-team
+
+# Contributor domains: each owned by the contributing team. No AWS here.
+/domains/foo/         @foo-team
+/domains/bar/         @bar-team
+/domains/zar/         @zar-team
