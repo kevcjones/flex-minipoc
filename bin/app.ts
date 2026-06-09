@@ -2,7 +2,8 @@
 import "source-map-support/register";
 import { App } from "aws-cdk-lib";
 
-import { DOMAINS, REGION } from "../config";
+import { REGION } from "../config";
+import { discoverDomains } from "../lib/discover";
 import { CoreStack } from "../lib/core-stack";
 import { DomainStack } from "../lib/domain-stack";
 
@@ -16,11 +17,14 @@ const env = {
 // Flex core: the front door. CloudFront -> one custom domain. Deployed once.
 new CoreStack(app, "FlexMiniCore", { env });
 
-// Independent domains, one stack each. Adding a name to DOMAINS and deploying
-// just that stack onboards a new domain: a new gateway that self-registers its
-// base path on the shared custom domain. Nothing else changes, and no DNS is
-// touched.
-for (const name of DOMAINS) {
-  const stackId = `FlexMini${name.charAt(0).toUpperCase()}${name.slice(1)}`;
-  new DomainStack(app, stackId, { env, domainName: name });
+// Domains and their routes come entirely from the domains/ folder tree.
+// Add a folder with a handler.ts to add a route; add a top-level folder to add
+// a domain. Deploy only the affected stack.
+for (const domain of discoverDomains()) {
+  const stackId = `FlexMini${domain.name.charAt(0).toUpperCase()}${domain.name.slice(1)}`;
+  new DomainStack(app, stackId, {
+    env,
+    domainName: domain.name,
+    routes: domain.routes,
+  });
 }

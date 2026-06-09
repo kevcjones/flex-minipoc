@@ -92,40 +92,66 @@ npm run deploy:bar
 To see the independence: change the foo lambda message and `npm run deploy:foo`
 again. Core and bar are untouched, and nothing waits.
 
-## Adding a new domain later (the point of the POC)
+## Folders are the routes
 
-Once the one-time DNS is in place (the cert validation CNAME and the `app` and
-`gw` CNAMEs), onboarding another domain touches no DNS at all, because domains
-are base paths under the one custom domain, not subdomains.
+There is no route list. The `domains/` tree is the source of truth:
 
-1. Add the name to `DOMAINS` in `config.ts`:
-   ```ts
-   export const DOMAINS = ["foo", "bar", "zar"];
-   ```
-2. Deploy only the new stack:
-   ```bash
-   npx cdk deploy FlexMiniZar
-   ```
-3. It works immediately:
-   ```bash
-   curl https://app.minipoc.yourdomain.com/zar/hello
-   # {"domain":"zar","message":"hello from zar"}
-   ```
+```
+domains/
+  foo/
+    v1/
+      hello/handler.ts     -> GET /foo/v1/hello
+      goodbye/handler.ts   -> GET /foo/v1/goodbye
+  bar/
+    v1/hello/handler.ts    -> GET /bar/v1/hello
+  zar/
+    v1/hello/handler.ts    -> GET /zar/v1/hello
+```
 
-Core, foo, and bar are not redeployed. No CNAME, no cert change, no front-door
-change. The new gateway simply self-registers `/zar` on the existing custom
-domain. That is the property the POC is here to demonstrate.
+The folder path between the domain and `handler.ts` is the API path. The domain
+folder name is its base path on the custom domain. `handler.ts` is a `GET`;
+method-by-filename (`get.ts` / `post.ts`) would be a small extension.
+
+A `handler.ts` is a plain Lambda handler, bundled with esbuild:
+
+```ts
+export const handler = async () => ({
+  statusCode: 200,
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ message: "hello from foo v1" }),
+});
+```
+
+## Adding a function (no redeploy of anything else)
+
+Add a folder with a `handler.ts`, then deploy only that domain's stack:
+
+```bash
+mkdir -p domains/bar/v1/status && cat > domains/bar/v1/status/handler.ts <<'TS'
+export const handler = async () => ({
+  statusCode: 200,
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ status: "ok" }),
+});
+TS
+npx cdk deploy FlexMiniBar
+curl https://app.minipoc.yourdomain.com/bar/v1/status
+```
+
+Only `FlexMiniBar` is touched. Core, foo, and zar are not redeployed, and no DNS
+changes. Adding a whole new domain is the same move one level up: create
+`domains/<name>/.../handler.ts` and `npx cdk deploy FlexMini<Name>`.
 
 ## Test
 
 Give CloudFront and the new CNAMEs a few minutes to settle.
 
 ```bash
-curl https://app.minipoc.yourdomain.com/foo/hello
-# {"domain":"foo","message":"hello from foo"}
+curl https://app.minipoc.yourdomain.com/foo/v1/hello
+# {"message":"hello from foo v1"}
 
-curl https://app.minipoc.yourdomain.com/bar/hello
-# {"domain":"bar","message":"hello from bar"}
+curl https://app.minipoc.yourdomain.com/bar/v1/hello
+# {"message":"hello from bar v1"}
 ```
 
 ## Teardown

@@ -19,7 +19,5 @@ export const PUBLIC_HOST = "app.<your-subdomain>";
 // DNS CNAME -> API Gateway regional target (DNS only).
 export const GATEWAY_HOST = "gw.<your-subdomain>";
 
-// Demo domains. Each becomes /<name> on the shared custom domain.
-// Add a name and deploy only its stack (e.g. npx cdk deploy FlexMiniZar).
-// No DNS changes are ever needed after the one-time setup.
-export const DOMAINS = ["foo", "bar"];
+// Domains and routes are discovered from the domains/ folder tree.
+// There is no list to maintain here.

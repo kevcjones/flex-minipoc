@@ -1,48 +1,34 @@
 import { CfnOutput, Duration, Stack, StackProps } from "aws-cdk-lib";
 import {
   CfnBasePathMapping,
+  IResource,
   LambdaIntegration,
   RestApi,
 } from "aws-cdk-lib/aws-apigateway";
-import { Code, Function as LambdaFunction, Runtime } from "aws-cdk-lib/aws-lambda";
+import { Runtime } from "aws-cdk-lib/aws-lambda";
+import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Construct } from "constructs";
 
 import { GATEWAY_HOST, PUBLIC_HOST } from "../config";
+import { DiscoveredRoute } from "./discover";
 
 interface DomainStackProps extends StackProps {
   domainName: string;
+  routes: DiscoveredRoute[];
 }
 
 /**
- * One independent domain (foo or bar).
+ * One independent domain. Its routes are discovered from the folder tree, so
+ * the gateway shape is a direct reflection of domains/<name>/...
  *
- * It owns its whole surface: its RestApi, its route, its Lambda, and its own
- * Deployment + Stage (redeployed automatically by CloudFormation). It attaches
- * to the shared custom domain by NAME only, via its own base path mapping, so
- * it has no CloudFormation dependency on the core stack or on any other domain.
- *
- * The only ordering requirement is that the core stack (which creates the
- * custom domain) is deployed once before this. After that, deploy or redeploy
- * this domain freely. Nothing waits on anything.
+ * Adding a function under this domain (a new handler.ts) and deploying only
+ * this stack adds the route. Core and the other domains are untouched.
  */
 export class DomainStack extends Stack {
   constructor(scope: Construct, id: string, props: DomainStackProps) {
     super(scope, id, props);
 
-    const { domainName } = props;
-
-    const fn = new LambdaFunction(this, "HelloFn", {
-      runtime: Runtime.NODEJS_20_X,
-      handler: "index.handler",
-      timeout: Duration.seconds(10),
-      code: Code.fromInline(
-        `exports.handler = async () => ({` +
-          ` statusCode: 200,` +
-          ` headers: { "Content-Type": "application/json" },` +
-          ` body: JSON.stringify({ domain: "${domainName}", message: "hello from ${domainName}" }),` +
-          ` });`,
-      ),
-    });
+    const { domainName, routes } = props;
 
     const api = new RestApi(this, "Gateway", {
       restApiName: `flex-mini-${domainName}`,
@@ -50,24 +36,47 @@ export class DomainStack extends Stack {
       deployOptions: { stageName: "prod" },
     });
 
-    // Base path mapping strips "<domainName>", so /<domainName>/hello arrives
-    // here as /hello.
-    api.root
-      .addResource("hello")
-      .addMethod("GET", new LambdaIntegration(fn));
+    for (const route of routes) {
+      const slug = route.apiPath.replace(/[^A-Za-z0-9]/g, "") || "root";
 
-    // Self-registration: claim this domain's base path on the shared custom
-    // domain. Owned by this stack. L1 resource so a multi-segment base path
-    // would also work without the L2 rough edge.
+      const fn = new NodejsFunction(this, `Fn${slug}`, {
+        entry: route.entry,
+        handler: "handler",
+        runtime: Runtime.NODEJS_20_X,
+        timeout: Duration.seconds(10),
+      });
+
+      // Base path mapping strips "<domainName>", so /<domainName>/<apiPath>
+      // arrives here as /<apiPath>.
+      addDeepResource(api.root, route.apiPath).addMethod(
+        route.method,
+        new LambdaIntegration(fn),
+      );
+
+      new CfnOutput(this, `Route${slug}`, {
+        value: `${route.method} https://${PUBLIC_HOST}/${domainName}/${route.apiPath}`,
+      });
+    }
+
+    // Self-registration: claim this domain's base path on the shared custom domain.
     new CfnBasePathMapping(this, "Mapping", {
       domainName: GATEWAY_HOST,
       basePath: domainName,
       restApiId: api.restApiId,
       stage: api.deploymentStage.stageName,
     });
-
-    new CfnOutput(this, "TestUrl", {
-      value: `https://${PUBLIC_HOST}/${domainName}/hello`,
-    });
   }
+}
+
+/** Walk or create nested API Gateway resources for a path like "v1/hello". */
+function addDeepResource(root: IResource, path: string): IResource {
+  return path
+    .split("/")
+    .filter(Boolean)
+    .reduce<IResource>((parent, segment) => {
+      const existing = parent.node.tryFindChild(segment) as
+        | IResource
+        | undefined;
+      return existing ?? parent.addResource(segment);
+    }, root);
 }
