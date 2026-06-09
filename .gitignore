@@ -1,0 +1,14 @@
+node_modules
+cdk.out
+*.d.ts
+*.js
+!jest.config.js
+.cdk.staging
+cdk.context.json
+
+# Local, account-specific. Keep account id and domain out of git.
+config.ts
+*-outputs.json
+
+# OS junk
+.DS_Store
