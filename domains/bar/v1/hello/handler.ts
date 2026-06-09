@@ -1,5 +1,3 @@
-export const handler = async () => ({
-  statusCode: 200,
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ message: "hello from bar v1" }),
-});
+import { createHandler } from "@flex/sdk/http";
+
+export const handler = createHandler(() => ({ message: "hello from bar v1" }));
