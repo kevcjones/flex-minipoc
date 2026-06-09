@@ -5,9 +5,10 @@
   "bin": { "flex-minipoc": "bin/app.ts" },
   "scripts": {
     "synth": "cdk synth",
-    "deploy:core": "cdk deploy FlexMiniCore",
-    "deploy:foo": "cdk deploy FlexMiniFoo",
-    "deploy:bar": "cdk deploy FlexMiniBar",
+    "deploy": "cdk deploy --all --require-approval never",
+    "prune": "ts-node scripts/prune.ts",
+    "prune:dry": "ts-node scripts/prune.ts --dry-run",
+    "deploy:sync": "cdk deploy --all --require-approval never && ts-node scripts/prune.ts",
     "destroy": "cdk destroy --all"
   },
   "devDependencies": {
