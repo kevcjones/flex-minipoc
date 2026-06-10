@@ -9,7 +9,7 @@ import { Runtime } from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Construct } from "constructs";
 
-import { GATEWAY_HOST, PUBLIC_HOST } from "../../config";
+import { GATEWAY_HOST, INTERNAL_HOST, PUBLIC_HOST } from "../../config";
 import { DiscoveredRoute } from "./discover";
 
 interface DomainStackProps extends StackProps {
@@ -30,10 +30,14 @@ export class DomainStack extends Stack {
 
     const { domainName, routes } = props;
 
-    // Injected so the SDK fragments can reach the core capabilities. Derived
-    // from the front-door host, so there is no cross-stack dependency.
-    const udpUrl = `https://${PUBLIC_HOST}/udp`;
-    const telemetryUrl = `https://${PUBLIC_HOST}/telemetry`;
+    // Injected so the SDK fragments can reach the core capabilities. Internal
+    // traffic targets the INTERNAL custom domain, which CloudFront does not
+    // front, so core capabilities are not reachable through the public front
+    // door. Domains themselves stay on the public gateway (GATEWAY_HOST).
+    const internalBase = `https://${INTERNAL_HOST}`;
+    const udpUrl = `${internalBase}/udp`;
+    const telemetryUrl = `${internalBase}/telemetry`;
+    const requestUrl = `${internalBase}/request`;
 
     const api = new RestApi(this, "Gateway", {
       restApiName: `flex-mini-${domainName}`,
@@ -49,7 +53,11 @@ export class DomainStack extends Stack {
         handler: "handler",
         runtime: Runtime.NODEJS_20_X,
         timeout: Duration.seconds(10),
-        environment: { FLEX_UDP_URL: udpUrl, FLEX_TELEMETRY_URL: telemetryUrl },
+        environment: {
+          FLEX_UDP_URL: udpUrl,
+          FLEX_TELEMETRY_URL: telemetryUrl,
+          FLEX_REQUEST_URL: requestUrl,
+        },
       });
 
       // Base path mapping strips "<domainName>", so /<domainName>/<apiPath>

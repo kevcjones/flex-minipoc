@@ -15,7 +15,12 @@ import {
 import { HttpOrigin } from "aws-cdk-lib/aws-cloudfront-origins";
 import { Construct } from "constructs";
 
-import { CERT_ARN, GATEWAY_HOST, PUBLIC_HOST } from "../../config";
+import {
+  CERT_ARN,
+  GATEWAY_HOST,
+  INTERNAL_HOST,
+  PUBLIC_HOST,
+} from "../../config";
 
 /**
  * The front door. Platform-owned. Owns CloudFront and the shared custom domain,
@@ -36,9 +41,20 @@ export class FrontDoorStack extends Stack {
     // Pre-created, DNS-validated cert (us-east-1) covering both hosts.
     const cert = Certificate.fromCertificateArn(this, "Cert", CERT_ARN);
 
-    // Regional custom domain. Multi-segment base paths need Regional + TLS 1.2.
+    // Public custom domain: CloudFront's origin. Holds only domain mappings.
     const customDomain = new DomainName(this, "GatewayDomain", {
       domainName: GATEWAY_HOST,
+      certificate: cert,
+      endpointType: EndpointType.REGIONAL,
+      securityPolicy: SecurityPolicy.TLS_1_2,
+    });
+
+    // Internal custom domain: holds the core capability mappings and is NOT
+    // fronted by CloudFront, so the public front door cannot reach core. The
+    // SDK targets this host. (In the POC it is still publicly resolvable; true
+    // isolation is the private gateway inside a VPC, which we hand-wave.)
+    const internalDomain = new DomainName(this, "InternalDomain", {
+      domainName: INTERNAL_HOST,
       certificate: cert,
       endpointType: EndpointType.REGIONAL,
       securityPolicy: SecurityPolicy.TLS_1_2,
@@ -71,6 +87,10 @@ export class FrontDoorStack extends Stack {
     });
     new CfnOutput(this, "GatewayTarget", {
       value: customDomain.domainNameAliasDomainName,
+    });
+    // Create a Cloudflare CNAME: INTERNAL_HOST -> this target (DNS only).
+    new CfnOutput(this, "InternalTarget", {
+      value: internalDomain.domainNameAliasDomainName,
     });
     new CfnOutput(this, "PublicUrl", { value: `https://${PUBLIC_HOST}` });
   }

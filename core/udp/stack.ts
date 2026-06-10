@@ -17,7 +17,7 @@ import { Runtime } from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Construct } from "constructs";
 
-import { GATEWAY_HOST, PUBLIC_HOST } from "../../config";
+import { INTERNAL_HOST } from "../../config";
 
 /**
  * Flex core capability: a tiny UDP-like store. Read/write keyed data.
@@ -72,12 +72,12 @@ export class UdpStack extends Stack {
     data.addMethod("DELETE", new LambdaIntegration(removeFn));
 
     new CfnBasePathMapping(this, "Mapping", {
-      domainName: GATEWAY_HOST,
+      domainName: INTERNAL_HOST,
       basePath: "udp",
       restApiId: api.restApiId,
       stage: api.deploymentStage.stageName,
     });
 
-    new CfnOutput(this, "UdpUrl", { value: `https://${PUBLIC_HOST}/udp` });
+    new CfnOutput(this, "UdpUrl", { value: `https://${INTERNAL_HOST}/udp` });
   }
 }

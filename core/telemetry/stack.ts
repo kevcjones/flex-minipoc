@@ -10,7 +10,7 @@ import { Runtime } from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Construct } from "constructs";
 
-import { GATEWAY_HOST, PUBLIC_HOST } from "../../config";
+import { INTERNAL_HOST } from "../../config";
 
 /**
  * Flex core capability: telemetry. Write-only event ingest, logged to
@@ -40,14 +40,14 @@ export class TelemetryStack extends Stack {
       .addMethod("POST", new LambdaIntegration(recordFn));
 
     new CfnBasePathMapping(this, "Mapping", {
-      domainName: GATEWAY_HOST,
+      domainName: INTERNAL_HOST,
       basePath: "telemetry",
       restApiId: api.restApiId,
       stage: api.deploymentStage.stageName,
     });
 
     new CfnOutput(this, "TelemetryUrl", {
-      value: `https://${PUBLIC_HOST}/telemetry`,
+      value: `https://${INTERNAL_HOST}/telemetry`,
     });
   }
 }

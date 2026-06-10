@@ -15,9 +15,14 @@ export const CERT_ARN =
 // Public host the client hits. DNS CNAME -> CloudFront domain (DNS only).
 export const PUBLIC_HOST = "app.<your-subdomain>";
 
-// Internal custom domain, CloudFront's single static origin.
+// Public gateway custom domain: CloudFront's origin, holds the DOMAIN mappings.
 // DNS CNAME -> API Gateway regional target (DNS only).
 export const GATEWAY_HOST = "gw.<your-subdomain>";
+
+// Internal gateway custom domain: holds the CORE capability mappings and is NOT
+// fronted by CloudFront. Internal/SDK traffic targets this host.
+// DNS CNAME -> API Gateway regional target (DNS only).
+export const INTERNAL_HOST = "internal.<your-subdomain>";
 
 // Domains and routes are discovered from the domains/ folder tree.
 // There is no list to maintain here.
