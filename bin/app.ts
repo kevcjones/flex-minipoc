@@ -5,6 +5,7 @@ import { App } from "aws-cdk-lib";
 import { REGION } from "../config";
 import { UdpStack } from "../core/udp/stack";
 import { TelemetryStack } from "../core/telemetry/stack";
+import { RequestStack } from "../core/request/stack";
 import { FrontDoorStack } from "../platform/front-door/stack";
 import { DomainStack } from "../platform/domains/stack";
 import { discoverDomains } from "../platform/domains/discover";
@@ -23,6 +24,7 @@ new FrontDoorStack(app, "FlexMiniCore", { env });
 // Flex core capabilities, reachable by domains via the SDK fragments.
 new UdpStack(app, "FlexMiniUdp", { env });
 new TelemetryStack(app, "FlexMiniTelemetry", { env });
+new RequestStack(app, "FlexMiniRequest", { env });
 
 // Domains and their routes come entirely from the domains/ folder tree.
 for (const domain of discoverDomains()) {

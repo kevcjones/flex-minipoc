@@ -7,6 +7,9 @@
 # The SDK http module is platform framework code (not a capability).
 /core/http/           @platform-team
 
+# The egress gateway and its allow-list are platform-maintained.
+/core/request/        @platform-team
+
 # Flex core capabilities: each owned by its capability team.
 /core/udp/            @udp-team
 /core/telemetry/      @telemetry-team
