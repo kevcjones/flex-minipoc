@@ -20,6 +20,7 @@ platform/              platform team: the edge and the build system
 core/                  flex-core capabilities, each team-owned
   udp/                   read/write store: stack.ts + handlers/ + sdk.ts (DynamoDB)
   telemetry/             write-only emit: stack.ts + handlers/ + sdk.ts (CloudWatch)
+  request/               egress gateway: forwards allow-listed outbound calls
   http/                  SDK-only framework module: sdk.ts (createHandler)
 domains/               contributor business logic, no AWS
   <domain>/<path>/handler.ts
@@ -28,35 +29,47 @@ bin/app.ts             assembles the app from the folders above
 
 ## Topology
 
-Everything enters through one CloudFront origin and fans out by path at the
-custom domain. All of this runs in default networking; there is no VPC here
-(see the simplifications at the end).
+There are two surfaces. The **public surface** (CloudFront in front of a custom
+domain) carries the domains. The **internal surface** (a second custom domain
+that CloudFront does not front) carries the core capabilities, so they are
+reachable by domains through the SDK but not through the public front door.
+Outbound calls leave through the `request` egress gateway. All of this runs in
+default networking; there is no VPC here (see the simplifications at the end).
 
 ```mermaid
 flowchart TB
     Client["Client (browser or app)"]
-    DNS["Cloudflare DNS<br/>app + gw CNAMEs"]
+    Ext["External API<br/>(allow-listed, e.g. postcodes.io)"]
 
-    subgraph PlatformZone["platform: front door"]
-        CF["CloudFront<br/>single static origin"]
-        CD["API Gateway custom domain<br/>base-path fan-out"]
+    subgraph Public["Public surface (fronted by CloudFront)"]
+        CF["CloudFront"]
+        PUB["public custom domain"]
     end
 
     subgraph DomainsZone["domains"]
-        FOO["foo gateway"] --> FOOL["foo lambdas"]
-        BAR["bar gateway"] --> BARL["bar lambdas"]
+        FOO["foo"]
+        BAR["bar"]
     end
 
-    subgraph CoreZone["core capabilities (in this repo for now)"]
-        UDP["udp gateway"] --> UDPL["udp lambdas"] --> DDB[("DynamoDB")]
-        TEL["telemetry gateway"] --> TELL["telemetry lambda"] --> CW[["CloudWatch Logs"]]
+    subgraph Internal["Internal surface (NOT fronted by CloudFront)"]
+        INT["internal custom domain"]
     end
 
-    Client --> DNS --> CF --> CD
-    CD -->|/foo| FOO
-    CD -->|/bar| BAR
-    CD -->|/udp| UDP
-    CD -->|/telemetry| TEL
+    subgraph CoreZone["core capabilities"]
+        UDP["udp"]
+        TEL["telemetry"]
+        REQ["request (egress)"]
+    end
+
+    Client --> CF --> PUB
+    PUB -->|/foo| FOO
+    PUB -->|/bar| BAR
+
+    FOO -. "via @flex/sdk" .-> INT
+    INT -->|/udp| UDP
+    INT -->|/telemetry| TEL
+    INT -->|/request| REQ
+    REQ -->|forwards| Ext
 ```
 
 **A modular monolith, by choice.** Everything lives in one repo today, but the
@@ -103,6 +116,7 @@ is importable with no central index to maintain:
 import { createHandler } from "@flex/sdk/http";
 import { udp } from "@flex/sdk/udp";
 import { telemetry } from "@flex/sdk/telemetry";
+import { request } from "@flex/sdk/request"; // outbound: request.get(url)
 ```
 
 Each fragment is co-located with the capability it fronts and is independently
@@ -110,14 +124,20 @@ owned and versioned (the `@flex/sdk-udp`, `@flex/sdk-telemetry` model). The
 platform injects each capability's URL into domain lambdas, so the SDK resolves
 the transport without the domain knowing it.
 
+Outbound calls go through `@flex/sdk/request`: a domain asks to fetch a URL and
+the egress gateway forwards it, but only to hosts on a platform-maintained
+allow-list (`core/request/allowlist.ts`). The domain never holds credentials,
+never gets raw internet egress, and never knows the gateway exists.
+
 Adding a capability: create `core/<name>/sdk.ts` (and `stack.ts` + `handlers/`
 if it deploys a service). It is instantly importable as `@flex/sdk/<name>`.
 
 ## One-time setup
 
 1. `npm install`
-2. Pick two subdomains you own in Cloudflare, e.g. `app.minipoc.yourdomain.com`
-   (public) and `gw.minipoc.yourdomain.com` (origin).
+2. Pick three subdomains you own in Cloudflare: `app...` (public, CloudFront),
+   `gw...` (public custom domain, CloudFront's origin), and `internal...` (the
+   internal surface for core capabilities).
 3. Request an ACM cert in **us-east-1** covering both (a wildcard is easiest),
    add the validation CNAME in Cloudflare (DNS only), wait for `ISSUED`:
    ```bash
@@ -125,7 +145,7 @@ if it deploys a service). It is instantly importable as `@flex/sdk/<name>`.
      --domain-name '*.minipoc.yourdomain.com' --validation-method DNS
    ```
 4. `cp config.example.ts config.ts` and set `CERT_ARN`, `PUBLIC_HOST`,
-   `GATEWAY_HOST`.
+   `GATEWAY_HOST`, `INTERNAL_HOST`.
 5. `aws sts get-caller-identity` and `npx cdk bootstrap aws://<account-id>/us-east-1`.
 
 ## Deploy
@@ -141,6 +161,7 @@ After the first deploy, create these CNAMEs in Cloudflare, both **DNS only**
 | ----------------- | ----- | ------------------------------ |
 | `PUBLIC_HOST`     | CNAME | `CloudFrontDomain` output      |
 | `GATEWAY_HOST`    | CNAME | `GatewayTarget` output         |
+| `INTERNAL_HOST`   | CNAME | `InternalTarget` output        |
 
 ## Add and remove (symmetric)
 
@@ -185,10 +206,16 @@ the cert.
 
 ## Notes (POC simplifications)
 
-- The custom domain is CloudFront's single origin, so CloudFront never changes
-  as domains come and go. If a base path errors, check the Host header first.
-- UDP and telemetry are public and unauthenticated here. Real Flex fronts core
-  capabilities with the private gateway and IAM / SigV4. Do not store anything
-  sensitive.
+- The public custom domain is CloudFront's single origin, so CloudFront never
+  changes as domains come and go. If a base path errors, check the Host header.
+- Core capabilities sit on a separate internal custom domain that CloudFront
+  does not front, so they are not reachable from the public front door. In the
+  POC that internal domain is still publicly resolvable by hostname; true
+  isolation is the private gateway inside a VPC, which we hand-wave.
+- The `request` egress gateway enforces its allow-list in code with default
+  Lambda internet egress. Real Flex enforces egress at the network layer (a
+  firewall with fixed egress IPs) so application code cannot bypass it.
+- Core capabilities are unauthenticated here. Real Flex fronts them with the
+  private gateway and IAM / SigV4. Do not store anything sensitive.
 - A real front door would also carry the origin-verify WAF check and an
   authorizer; both are omitted to keep the POC minimal.
