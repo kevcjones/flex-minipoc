@@ -107,6 +107,12 @@ export const handler = createHandler(() => ({ message: "hello from foo v1" }));
 `handler.ts` is a `GET`; method-by-filename (`get.ts` / `post.ts`) is a small
 extension.
 
+Folders express routing and nothing more. Per-route controls, such as which
+secrets, keys or resources a handler may use and least-privilege grants, have no
+home in a folder. That is where the real platform's richer configuration is the
+better fit, and it is a deliberate boundary of this POC rather than a claim that
+folders beat configuration for everything.
+
 ## The SDK
 
 A tsconfig path wildcard maps `@flex/sdk/*` to `core/*/sdk`, so every fragment

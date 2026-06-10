@@ -40,6 +40,14 @@ there is no separate list to keep in sync with the code.
 In this POC: `domains/<domain>/<segments>/handler.ts` becomes
 `GET /<domain>/<segments>`. Adding a route is adding a folder.
 
+Where it stops: the folder convention expresses routing, and only routing. The
+richer configuration the real platform uses earns its place for the controls a
+folder cannot carry, such as per-route access to secrets, keys and resources,
+least-privilege grants, and per-function tuning. This POC deliberately stays at
+routing. Folders are not a claim that configuration is unnecessary, only that
+routing does not need it; the advanced per-domain controls would come back as
+configuration, much as Flex has today.
+
 ## 4. Ownership is structural
 
 Top-level folders are ownership boundaries, and the directory layout mirrors who
@@ -120,6 +128,11 @@ this POC does not attempt, especially around networking and security:
   real fix is a shared secret, which this POC simply leaves out.
 - Core capabilities are unauthenticated. A real platform fronts them with
   IAM / SigV4 on a private gateway.
+- No per-route access control. The folder convention has nowhere to declare
+  which secrets, keys or resources a route may touch. Real Flex declares this in
+  configuration and grants least privilege per route; the POC grants nothing
+  fine-grained, which is a real reason its richer configuration is the better
+  fit beyond a proof of concept.
 - No WAF or edge authorizer on the front door.
 - DNS is managed by hand in Cloudflare rather than by the platform.
 
