@@ -17,21 +17,28 @@ const env = {
   region: REGION,
 };
 
-// Platform: the front door. CloudFront -> one custom domain. Deployed once.
-// Stack id stays "FlexMiniCore" for continuity.
-new FrontDoorStack(app, "FlexMiniCore", { env });
+// Platform: the front door. Creates the public and internal custom domains and
+// CloudFront. Everything else attaches to those domains by name (a loose string
+// coupling, no exports), so each also declares an ordering-only dependency on
+// it: that emits nothing into the templates, it just tells `cdk deploy --all`
+// to do the front door first and tear it down last.
+const frontDoor = new FrontDoorStack(app, "FlexMiniCore", { env });
 
 // Flex core capabilities, reachable by domains via the SDK fragments.
-new UdpStack(app, "FlexMiniUdp", { env });
-new TelemetryStack(app, "FlexMiniTelemetry", { env });
-new RequestStack(app, "FlexMiniRequest", { env });
+const core = [
+  new UdpStack(app, "FlexMiniUdp", { env }),
+  new TelemetryStack(app, "FlexMiniTelemetry", { env }),
+  new RequestStack(app, "FlexMiniRequest", { env }),
+];
+for (const stack of core) stack.addDependency(frontDoor);
 
 // Domains and their routes come entirely from the domains/ folder tree.
 for (const domain of discoverDomains()) {
   const stackId = `FlexMini${domain.name.charAt(0).toUpperCase()}${domain.name.slice(1)}`;
-  new DomainStack(app, stackId, {
+  const stack = new DomainStack(app, stackId, {
     env,
     domainName: domain.name,
     routes: domain.routes,
   });
+  stack.addDependency(frontDoor);
 }
