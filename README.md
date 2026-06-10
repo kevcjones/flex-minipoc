@@ -225,3 +225,10 @@ the cert.
   private gateway and IAM / SigV4. Do not store anything sensitive.
 - A real front door would also carry the origin-verify WAF check and an
   authorizer; both are omitted to keep the POC minimal.
+
+## Further reading
+
+- `PRINCIPLES.md` — the principles this POC explores, and what it deliberately
+  simplifies.
+- `docs/execution-layer.md` — an open design question: where the platform runs
+  pre and post domain logic, with the options and their fit.
