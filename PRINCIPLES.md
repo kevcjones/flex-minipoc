@@ -12,17 +12,22 @@ in the code.
 ## 1. One front door, one origin
 
 The platform presents a single public entry point and a single CloudFront
-origin. Capabilities and domains sit behind it and are reached by path. The edge
-stays stable as the number of things behind it grows.
+origin. The public domains sit behind it and are reached by path; the edge stays
+stable as the number of things behind it grows. Core capabilities are not
+exposed here, they sit on a separate internal surface (see the simplifications),
+so the front door fans out only to what is meant to be public.
 
-In this POC: CloudFront points at one API Gateway custom domain, which routes by
-base path to each gateway. The front door is unaffected by what sits behind it.
+In this POC: CloudFront points at one public API Gateway custom domain, which
+routes by base path to the domain gateways. Core capabilities live on a second
+custom domain that CloudFront does not front. The public front door is
+unaffected by what sits behind it.
 
 ## 2. Independent units
 
 Every domain and every core capability is its own deployable unit, with its own
-gateway, deployment, and blast radius. Each one attaches itself to the shared
-surface, so its lifecycle is self-contained.
+gateway, deployment, and blast radius. Each one attaches itself to a shared
+surface (public for domains, internal for core), so its lifecycle is
+self-contained.
 
 In this POC: each domain is its own stack that self-registers a base path. Work
 on one unit stays scoped to that unit.
@@ -59,8 +64,8 @@ client fragment, versioned on its own terms. Consumers depend on the fragments
 they use, and a single convention composes them.
 
 In this POC: a path wildcard maps `@flex/sdk/*` to `core/*/sdk`, so `udp`,
-`telemetry`, and `http` are importable as `@flex/sdk/<name>` with no central
-index to maintain. Each fragment lives next to the capability it fronts.
+`telemetry`, `request`, and `http` are importable as `@flex/sdk/<name>` with no
+central index to maintain. Each fragment lives next to the capability it fronts.
 
 ## 7. Symmetric lifecycle
 
@@ -94,15 +99,27 @@ So this is read in the right spirit. The real platform does a great deal that
 this POC does not attempt, especially around networking and security:
 
 - No VPC. Functions run in default Lambda networking, not inside a VPC.
-- No public and private separation. The real platform places functions in
-  specific subnets (public egress, private egress, isolated) with security
-  groups to control what each one can reach. Here every function is the same.
-- No egress control. Nothing constrains what a function can call outward.
-- No gateway for external calls. The UDP store here is a local stand-in. The
-  real platform brokers calls to external and remote systems through dedicated
-  gateways that act as anti-corruption layers. There is no such broker here.
-- The UDP and telemetry capabilities are public and unauthenticated. A real
-  platform fronts internal capabilities with a private path and proper auth.
+- Surface separation only. Core capabilities sit on a separate internal custom
+  domain that CloudFront does not front, so they are not reachable through the
+  public front door. But there is no network-layer separation: no subnets
+  (public egress, private egress, isolated), no security groups, and the
+  internal domain is still publicly resolvable by hostname. True isolation is
+  the private gateway inside a VPC.
+- Egress is allow-listed, but only in code. The request gateway forwards
+  outbound calls only to allow-listed hosts and blocks SSRF targets, but it runs
+  with default Lambda internet egress. A real platform enforces egress at the
+  network layer (a firewall with fixed egress IPs) so application code cannot
+  bypass it.
+- Generic egress, not curated. The request gateway is a pass-through; the
+  calling domain shapes the partner response. A real platform also runs
+  per-destination anti-corruption gateways that hold credentials and shape
+  responses.
+- No trust model on the gateways. They are reachable directly by anyone who
+  resolves the host; the origin-verify header that ties traffic to CloudFront is
+  omitted. A REST API gateway cannot be an Origin Access Control target, so the
+  real fix is a shared secret, which this POC simply leaves out.
+- Core capabilities are unauthenticated. A real platform fronts them with
+  IAM / SigV4 on a private gateway.
 - No WAF or edge authorizer on the front door.
 - DNS is managed by hand in Cloudflare rather than by the platform.
 
