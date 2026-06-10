@@ -29,9 +29,8 @@ bin/app.ts             assembles the app from the folders above
 ## Topology
 
 Everything enters through one CloudFront origin and fans out by path at the
-custom domain. Domain lambdas reach core capabilities through the SDK, which
-re-enters the same front door (dashed). All of this runs in default networking;
-there is no VPC here (see the simplifications at the end).
+custom domain. All of this runs in default networking; there is no VPC here
+(see the simplifications at the end).
 
 ```mermaid
 flowchart TB
@@ -48,7 +47,7 @@ flowchart TB
         BAR["bar gateway"] --> BARL["bar lambdas"]
     end
 
-    subgraph CoreZone["core capabilities"]
+    subgraph CoreZone["core capabilities (in this repo for now)"]
         UDP["udp gateway"] --> UDPL["udp lambdas"] --> DDB[("DynamoDB")]
         TEL["telemetry gateway"] --> TELL["telemetry lambda"] --> CW[["CloudWatch Logs"]]
     end
@@ -58,9 +57,16 @@ flowchart TB
     CD -->|/bar| BAR
     CD -->|/udp| UDP
     CD -->|/telemetry| TEL
-
-    FOOL -. "@flex/sdk over HTTPS" .-> CF
 ```
+
+**A modular monolith, by choice.** Everything lives in one repo today, but the
+pieces are isolated, not entangled. Each domain and each core capability is its
+own stack, owns its own folder and codeowners, and talks to the rest only
+through the SDK, which is just an HTTPS endpoint. That isolation makes
+extraction a small step rather than a rewrite: UDP could move to its own
+repository and deploy on its own gateway or subdomain, and the only thing that
+changes for a consumer is the endpoint the SDK resolves. The single repo is a
+convenience for now, not a constraint.
 
 Adding a domain touches nothing shared but its own base path mapping. CloudFront
 never changes.
