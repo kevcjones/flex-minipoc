@@ -57,10 +57,14 @@ export const handler = async (event: { body?: string | null }) => {
     return json(403, { error: "destination not permitted", host: target.hostname });
   }
 
+  // Do not follow redirects. An allow-listed host that 302s elsewhere would be
+  // an exfiltration channel straight past the allow-list, so a 3xx is returned
+  // as-is rather than chased.
   const upstream = await fetch(target.toString(), {
     method,
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
+    redirect: "manual",
   });
 
   const text = await upstream.text();
