@@ -46,7 +46,15 @@ export class DomainStack extends Stack {
     });
 
     for (const route of routes) {
-      const slug = route.apiPath.replace(/[^A-Za-z0-9]/g, "") || "root";
+      // PascalCase per segment, so distinct paths never collide on the
+      // construct / output id (e.g. v1/hel/lo vs v1/hello) while staying
+      // alphanumeric (CfnOutput ids must be).
+      const slug =
+        route.apiPath
+          .split(/[^A-Za-z0-9]+/)
+          .filter(Boolean)
+          .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+          .join("") || "Root";
 
       const fn = new NodejsFunction(this, `Fn${slug}`, {
         entry: route.entry,
