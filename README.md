@@ -26,14 +26,40 @@ domains/               contributor business logic, no AWS
 bin/app.ts             assembles the app from the folders above
 ```
 
-Request path:
+## Topology
 
-```
-client -> CloudFront (FlexMiniCore) -> gw.<sub> custom domain
-            |-- /foo  -> FlexMiniFoo   gateway
-            |-- /bar  -> FlexMiniBar   gateway
-            |-- /udp  -> FlexMiniUdp   (core capability)
-            |-- /telemetry -> FlexMiniTelemetry (core capability)
+Everything enters through one CloudFront origin and fans out by path at the
+custom domain. Domain lambdas reach core capabilities through the SDK, which
+re-enters the same front door (dashed). All of this runs in default networking;
+there is no VPC here (see the simplifications at the end).
+
+```mermaid
+flowchart TB
+    Client["Client (browser or app)"]
+    DNS["Cloudflare DNS<br/>app + gw CNAMEs"]
+
+    subgraph PlatformZone["platform: front door"]
+        CF["CloudFront<br/>single static origin"]
+        CD["API Gateway custom domain<br/>base-path fan-out"]
+    end
+
+    subgraph DomainsZone["domains"]
+        FOO["foo gateway"] --> FOOL["foo lambdas"]
+        BAR["bar gateway"] --> BARL["bar lambdas"]
+    end
+
+    subgraph CoreZone["core capabilities"]
+        UDP["udp gateway"] --> UDPL["udp lambdas"] --> DDB[("DynamoDB")]
+        TEL["telemetry gateway"] --> TELL["telemetry lambda"] --> CW[["CloudWatch Logs"]]
+    end
+
+    Client --> DNS --> CF --> CD
+    CD -->|/foo| FOO
+    CD -->|/bar| BAR
+    CD -->|/udp| UDP
+    CD -->|/telemetry| TEL
+
+    FOOL -. "@flex/sdk over HTTPS" .-> CF
 ```
 
 Adding a domain touches nothing shared but its own base path mapping. CloudFront
