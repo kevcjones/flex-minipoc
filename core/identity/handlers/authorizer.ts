@@ -1,14 +1,15 @@
 /**
  * The udp-linked:dvla auth strategy, as a REQUEST authorizer lambda.
  *
- * Takes the user id from a stub x-user-id header (stands in for a verified
- * token), looks up that user's DVLA linking id in UDP, and returns it as
- * authorizer context. Pass-through routes map linkingId into an upstream header;
- * execution handlers read it from input.auth. The channel never sees it.
+ * Resolves the upstream record id to fetch for this caller and returns it as
+ * authorizer context (linkingId). Pass-through routes substitute it into the
+ * upstream URL path; execution handlers read it from input.auth. The channel
+ * never chooses it.
  *
- * POC simplification: x-user-id is trusted as-is (no real One Login OIDC), and a
- * missing user falls back to a demo user so the walkthrough stays frictionless.
- * Real Flex would reject an unverified caller.
+ * Resolution: a numeric x-user-id is used directly (so you can pick a record, or
+ * an out-of-range id to force drift); otherwise we look up a linked id in UDP;
+ * otherwise a default record. POC simplification: x-user-id is trusted as-is, no
+ * real One Login OIDC.
  */
 interface AuthorizerEvent {
   type: string;
@@ -28,24 +29,28 @@ function header(
   return undefined;
 }
 
-async function resolveLinkingId(userId: string): Promise<string> {
+async function resolveId(userId: string): Promise<string> {
+  if (/^\d+$/.test(userId)) return userId;
+
   const base = (process.env.FLEX_UDP_URL ?? "").replace(/\/$/, "");
   const key = encodeURIComponent(`linking:${userId}`);
   try {
     const res = await fetch(`${base}/v1/data/${key}`);
     if (res.ok) {
       const value = await res.json();
-      if (typeof value === "string") return value;
+      if (typeof value === "string" || typeof value === "number") {
+        return String(value);
+      }
     }
   } catch {
-    // fall through to the stub
+    // fall through to the default record
   }
-  return `stub-link-${userId}`;
+  return "7";
 }
 
 export async function handler(event: AuthorizerEvent) {
   const userId = header(event.headers, "x-user-id") ?? "demo-user";
-  const linkingId = await resolveLinkingId(userId);
+  const linkingId = await resolveId(userId);
 
   return {
     principalId: userId,

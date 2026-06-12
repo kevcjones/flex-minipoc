@@ -2,11 +2,10 @@
 import "source-map-support/register";
 import { App } from "aws-cdk-lib";
 
-import { INTERNAL_HOST, REGION } from "../config";
+import { REGION } from "../config";
 import { UdpStack } from "../core/udp/stack";
 import { TelemetryStack } from "../core/telemetry/stack";
 import { RequestStack } from "../core/request/stack";
-import { MockDvlaStack } from "../external/mock-dvla/stack";
 import { FrontDoorStack } from "../platform/front-door/stack";
 import { DomainStack } from "../platform/domains/stack";
 import { discoverDomains } from "../platform/domains/discover";
@@ -33,16 +32,6 @@ const core = [
 ];
 for (const stack of core) stack.addDependency(frontDoor);
 
-// A stand-in for the external DVLA system (not part of Flex). Gives the
-// pass-through a real upstream to forward to and the execution route something
-// to fetch.
-const mockDvla = new MockDvlaStack(app, "FlexMiniMockDvla", { env });
-mockDvla.addDependency(frontDoor);
-
-// Placeholders that pass-through targets ({mockDvla}) resolve to. Literal URLs
-// (the internal host), so no cross-stack token plumbing.
-const targets = { mockDvla: `https://${INTERNAL_HOST}/mock-dvla` };
-
 // Domains and their routes come entirely from the domains/ folder tree.
 for (const domain of discoverDomains()) {
   const stackId = `FlexMini${domain.name.charAt(0).toUpperCase()}${domain.name.slice(1)}`;
@@ -50,7 +39,6 @@ for (const domain of discoverDomains()) {
     env,
     domainName: domain.name,
     routes: domain.routes,
-    targets,
   });
   stack.addDependency(frontDoor);
 }

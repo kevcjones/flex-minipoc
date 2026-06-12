@@ -1,7 +1,7 @@
 import type { z } from "zod";
 
-import { DrivingLicence } from "../domains/dvla/schema/driving-licence";
 import { User } from "../domains/dvla/schema/user";
+import { Vehicle } from "../domains/dvla/schema/vehicle";
 
 /**
  * The typed surface handed to channel teams. Keys are routes; each carries its
@@ -12,7 +12,7 @@ import { User } from "../domains/dvla/schema/user";
  */
 export const routes = {
   "GET /dvla/v1/user": { output: User },
-  "GET /dvla/v1/driving-licence": { output: DrivingLicence },
+  "GET /dvla/v1/vehicle": { output: Vehicle },
 } as const;
 
 export type Routes = typeof routes;

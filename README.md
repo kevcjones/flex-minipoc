@@ -26,7 +26,6 @@ core/                  flex-core capabilities, each team-owned
   identity/              auth strategies: sdk.ts (names) + handlers/ (authorizer)
 domains/               contributor business logic, no AWS
   <domain>/<path>/route.ts and/or handler.ts
-external/              stand-ins for third-party systems (mock-dvla)
 bin/app.ts             assembles the app from the folders above
 ```
 

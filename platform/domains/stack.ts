@@ -21,8 +21,6 @@ import { DiscoveredRoute } from "./discover";
 interface DomainStackProps extends StackProps {
   domainName: string;
   routes: DiscoveredRoute[];
-  // Placeholder -> URL, for resolving {mockDvla} etc. in pass-through targets.
-  targets: Record<string, string>;
 }
 
 // Provisioning a REST API Gateway cache is a paid, always-on cluster and slows
@@ -46,7 +44,7 @@ export class DomainStack extends Stack {
   constructor(scope: Construct, id: string, props: DomainStackProps) {
     super(scope, id, props);
 
-    const { domainName, routes, targets } = props;
+    const { domainName, routes } = props;
 
     const internalBase = `https://${INTERNAL_HOST}`;
     const udpUrl = `${internalBase}/udp`;
@@ -95,14 +93,13 @@ export class DomainStack extends Stack {
           : {};
 
       if (config?.kind === "passthrough") {
-        const { method, uri } = resolveTarget(config.target, targets);
+        const { method, uri } = resolveTarget(config.target);
+        // The authorizer's record id is substituted into the upstream URL path
+        // ({id}) at the gateway, so the pass-through needs no handler.
         const requestParameters =
-          config.auth === "none"
-            ? undefined
-            : {
-                "integration.request.header.x-dvla-linking-id":
-                  "context.authorizer.linkingId",
-              };
+          config.auth !== "none" && uri.includes("{id}")
+            ? { "integration.request.path.id": "context.authorizer.linkingId" }
+            : undefined;
 
         resource.addMethod(
           route.method,
@@ -133,7 +130,6 @@ export class DomainStack extends Stack {
             FLEX_UDP_URL: udpUrl,
             FLEX_TELEMETRY_URL: telemetryUrl,
             FLEX_REQUEST_URL: requestUrl,
-            FLEX_MOCK_DVLA_URL: targets.mockDvla ?? "",
             FLEX_POST_HOOKS: JSON.stringify(post ?? []),
           },
         });
@@ -164,15 +160,8 @@ function loadConfig(route: DiscoveredRoute): RouteConfig | undefined {
 }
 
 /** "GET {mockDvla}/user" -> { method, uri } with placeholders resolved. */
-function resolveTarget(
-  target: string,
-  targets: Record<string, string>,
-): { method: string; uri: string } {
-  const [method, rawUri = ""] = target.split(/\s+/);
-  const uri = rawUri.replace(
-    /\{(\w+)\}/g,
-    (_, key: string) => targets[key] ?? "",
-  );
+function resolveTarget(target: string): { method: string; uri: string } {
+  const [method, uri = ""] = target.split(/\s+/);
   return { method, uri };
 }
 
