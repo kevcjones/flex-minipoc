@@ -8,8 +8,6 @@
   "scripts": {
     "synth": "cdk synth",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "typecheck:consumer": "tsc -p tsconfig.consumer.json",
-    "consumer": "ts-node consumer/run.ts",
     "deploy": "cdk deploy --all --require-approval never",
     "prune": "ts-node scripts/prune.ts",
     "prune:dry": "ts-node scripts/prune.ts --dry-run",

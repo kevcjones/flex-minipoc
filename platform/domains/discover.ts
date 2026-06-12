@@ -18,9 +18,9 @@ export interface DiscoveredDomain {
   routes: DiscoveredRoute[];
 }
 
-// This file lives at platform/domains/, so the contributor domains/ folder is
-// two levels up.
-const DOMAINS_DIR = join(__dirname, "..", "..", "domains");
+// This file lives at platform/domains/, so the contributor planes (domains/,
+// channels/) are two levels up.
+const PLANES_ROOT = join(__dirname, "..", "..");
 
 /**
  * Filesystem is the source of truth.
@@ -32,16 +32,25 @@ const DOMAINS_DIR = join(__dirname, "..", "..", "domains");
  * a route.ts is wired from its declaration; a folder with only a handler.ts is a
  * legacy execution route. Adding a route is adding a folder. No central list.
  */
-export function discoverDomains(): DiscoveredDomain[] {
-  if (!existsSync(DOMAINS_DIR)) return [];
+/** Discover a plane of route folders (domains/ or channels/). */
+export function discoverPlane(planeDir: string): DiscoveredDomain[] {
+  if (!existsSync(planeDir)) return [];
 
-  return readdirSync(DOMAINS_DIR)
-    .filter((entry) => statSync(join(DOMAINS_DIR, entry)).isDirectory())
+  return readdirSync(planeDir)
+    .filter((entry) => statSync(join(planeDir, entry)).isDirectory())
     .map((name) => ({
       name,
-      routes: discoverRoutes(join(DOMAINS_DIR, name), []),
+      routes: discoverRoutes(join(planeDir, name), []),
     }))
-    .filter((domain) => domain.routes.length > 0);
+    .filter((unit) => unit.routes.length > 0);
+}
+
+export function discoverDomains(): DiscoveredDomain[] {
+  return discoverPlane(join(PLANES_ROOT, "domains"));
+}
+
+export function discoverChannels(): DiscoveredDomain[] {
+  return discoverPlane(join(PLANES_ROOT, "channels"));
 }
 
 function discoverRoutes(dir: string, segments: string[]): DiscoveredRoute[] {

@@ -130,6 +130,9 @@ export class DomainStack extends Stack {
             FLEX_UDP_URL: udpUrl,
             FLEX_TELEMETRY_URL: telemetryUrl,
             FLEX_REQUEST_URL: requestUrl,
+            // The back-door: channel views reach domain resources here (the
+            // gateway host directly, not CloudFront), with the user identity.
+            FLEX_FRONT_DOOR_URL: `https://${GATEWAY_HOST}`,
             FLEX_POST_HOOKS: JSON.stringify(post ?? []),
           },
         });

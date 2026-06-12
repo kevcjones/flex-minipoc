@@ -8,7 +8,7 @@ import { TelemetryStack } from "../core/telemetry/stack";
 import { RequestStack } from "../core/request/stack";
 import { FrontDoorStack } from "../platform/front-door/stack";
 import { DomainStack } from "../platform/domains/stack";
-import { discoverDomains } from "../platform/domains/discover";
+import { discoverChannels, discoverDomains } from "../platform/domains/discover";
 
 const app = new App();
 
@@ -32,13 +32,25 @@ const core = [
 ];
 for (const stack of core) stack.addDependency(frontDoor);
 
-// Domains and their routes come entirely from the domains/ folder tree.
+// Domains (L1) and their routes come entirely from the domains/ folder tree.
 for (const domain of discoverDomains()) {
   const stackId = `FlexMini${domain.name.charAt(0).toUpperCase()}${domain.name.slice(1)}`;
   const stack = new DomainStack(app, stackId, {
     env,
     domainName: domain.name,
     routes: domain.routes,
+  });
+  stack.addDependency(frontDoor);
+}
+
+// Channels (L2): composition views that fan in to L1 resources. Same builder,
+// each mounted at the channel's base path on the front door.
+for (const channel of discoverChannels()) {
+  const stackId = `FlexMiniChannel${channel.name.charAt(0).toUpperCase()}${channel.name.slice(1)}`;
+  const stack = new DomainStack(app, stackId, {
+    env,
+    domainName: channel.name,
+    routes: channel.routes,
   });
   stack.addDependency(frontDoor);
 }

@@ -4,7 +4,10 @@
     "module": "commonjs",
     "moduleResolution": "node",
     "baseUrl": ".",
-    "paths": { "@flex/sdk/*": ["core/*/sdk"] },
+    "paths": {
+      "@flex/sdk/*": ["core/*/sdk"],
+      "@flex/front-door": ["front-door/index"]
+    },
     "lib": ["ES2022"],
     "strict": true,
     "esModuleInterop": true,
@@ -19,6 +22,8 @@
     "bin/**/*.ts",
     "platform/**/*.ts",
     "core/**/*.ts",
+    "channels/**/*.ts",
+    "front-door/**/*.ts",
     "domains/**/*.ts",
     "scripts/**/*.ts",
     "config.ts"
