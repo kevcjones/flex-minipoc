@@ -22,8 +22,11 @@ core/                  flex-core capabilities, each team-owned
   telemetry/             write-only emit: stack.ts + handlers/ + sdk.ts (CloudWatch)
   request/               egress gateway: forwards allow-listed outbound calls
   http/                  SDK-only framework module: sdk.ts (createHandler)
+  routes/                SDK-only framework module: sdk.ts (defineRoute)
+  identity/              auth strategies: sdk.ts (names) + handlers/ (authorizer)
 domains/               contributor business logic, no AWS
-  <domain>/<path>/handler.ts
+  <domain>/<path>/route.ts and/or handler.ts
+external/              stand-ins for third-party systems (mock-dvla)
 bin/app.ts             assembles the app from the folders above
 ```
 

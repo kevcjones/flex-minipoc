@@ -15,7 +15,7 @@ import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Construct } from "constructs";
 
 import { GATEWAY_HOST, INTERNAL_HOST, PUBLIC_HOST } from "../../config";
-import type { RouteConfig } from "../routes/define";
+import type { RouteConfig } from "../../core/routes/sdk";
 import { DiscoveredRoute } from "./discover";
 
 interface DomainStackProps extends StackProps {
@@ -64,7 +64,7 @@ export class DomainStack extends Stack {
     const udpLinkedAuthorizer = (): RequestAuthorizer => {
       if (!authorizer) {
         const authFn = new NodejsFunction(this, "AuthorizerFn", {
-          entry: join(__dirname, "..", "routes", "authorizer.ts"),
+          entry: join(__dirname, "..", "..", "core", "identity", "handlers", "authorizer.ts"),
           handler: "handler",
           runtime: Runtime.NODEJS_20_X,
           timeout: Duration.seconds(10),

@@ -1,10 +1,11 @@
 /**
- * The route declaration model.
+ * The route declaration model (@flex/sdk/routes).
  *
- * A route folder under domains/ carries a route.ts that default-exports
- * defineRoute({...}). The builder (platform/domains/stack.ts) imports each at
- * synth and wires a gateway from the declaration. The folder is still the route;
- * the file now describes it.
+ * Contributor-facing framework, the sibling of @flex/sdk/http: createHandler
+ * adapts a handler, defineRoute declares a route. A route folder under domains/
+ * carries a route.ts that default-exports defineRoute({...}); the builder
+ * (platform/domains/stack.ts) imports each at synth and wires a gateway from the
+ * declaration.
  *
  * Two kinds:
  *  - passthrough: the gateway forwards to an upstream, no handler lambda.
@@ -17,8 +18,9 @@
  */
 import type { ZodTypeAny } from "zod";
 
-/** Named auth strategies the platform provides. Domains configure, not code. */
-export type AuthStrategy = "none" | "udp-linked:dvla";
+import type { AuthStrategy } from "../identity/sdk";
+
+export type { AuthStrategy };
 
 export interface CachePolicy {
   /** Cache per user (the user id becomes part of the cache key). */

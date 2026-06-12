@@ -78,9 +78,10 @@ execution handlers read it from `input.auth`.
 ```
 external/mock-dvla/                 stub upstream (stands in for an external system)
   stack.ts, handlers/
-platform/routes/
-  define.ts                         defineRoute + types + auth-strategy names
-  authorizer.ts                     the stub authorizer lambda
+core/routes/sdk.ts                  defineRoute + types (@flex/sdk/routes)
+core/identity/
+  sdk.ts                            auth strategy names (@flex/sdk/identity)
+  handlers/authorizer.ts            the stub authorizer lambda
 domains/dvla/
   schema/user.ts, driving-licence.ts
   v1/user/route.ts                  passthrough

@@ -1,4 +1,5 @@
-import { defineRoute } from "../../../../platform/routes/define";
+import { defineRoute } from "@flex/sdk/routes";
+
 import { User } from "../../schema/user";
 
 /**
