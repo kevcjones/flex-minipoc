@@ -36,7 +36,9 @@ export interface CachePolicy {
  * here.
  */
 export interface UdpWriteHook {
-  udpWrite: { key: string };
+  // Writes a small preference value, never the response body. UDP holds
+  // preferences (e.g. "has a driving licence: true"), not records of the data.
+  udpWrite: { key: string; value: unknown };
 }
 export type PostHook = UdpWriteHook;
 

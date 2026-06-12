@@ -5,7 +5,8 @@ import { DrivingLicence } from "../../schema/driving-licence";
 /**
  * Pulls the licence from the (mock) upstream using the linking id the authorizer
  * resolved, validates it against the contract, and returns it. The post-hook
- * declared in route.ts writes the result to UDP after this returns.
+ * declared in route.ts records the has-licence preference in UDP after this
+ * returns (the yes/no fact, never the licence details).
  *
  * Drift is graded: an additive change still parses (extra keys are stripped); a
  * breaking change (missing or wrong-typed field) is warned and the raw upstream

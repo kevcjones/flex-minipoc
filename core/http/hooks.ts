@@ -26,9 +26,12 @@ function scopedKey(userId: string | undefined, key: string): string {
 }
 
 const registry: Record<string, Hook> = {
+  // Persist a preference, never the response body. The value is configured on
+  // the route (e.g. true for "has a driving licence"), so the licence details
+  // themselves never reach UDP.
   udpWrite: async (cfg, ctx) => {
-    const { key } = cfg as { key: string };
-    await udp.put(scopedKey(ctx.input.auth.userId, key), ctx.data);
+    const { key, value } = cfg as { key: string; value: unknown };
+    await udp.put(scopedKey(ctx.input.auth.userId, key), value);
   },
 };
 

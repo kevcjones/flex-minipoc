@@ -11,7 +11,8 @@ Demonstrated with a fake DVLA domain:
   with a per-user token injected by the authorizer. No handler lambda.
 - `GET /dvla/v1/driving-licence` is an **execution** route: a lambda pulls the
   licence, validates it against the contract, returns it, and an inline
-  post-hook writes it to UDP as a preference.
+  post-hook records a yes/no preference (has a driving licence) in UDP, never
+  the licence details.
 
 ## Decisions (signed off)
 
@@ -49,7 +50,7 @@ export default defineRoute({
   auth: "udp-linked:dvla",
   output: DrivingLicence,
   handler,
-  post: [{ udpWrite: { key: "dvla.drivingLicence" } }],
+  post: [{ udpWrite: { key: "dvla.hasDrivingLicence", value: true } }],
   drift: "inline",
 });
 ```
@@ -95,7 +96,7 @@ consumer/                           minimal typed consumer + typecheck proof (no
 1. `GET /dvla/v1/user` returns mock user JSON, with the linking id injected
    server-side though the caller sent none.
 2. `GET /dvla/v1/driving-licence` returns licence JSON; a follow-up UDP read
-   shows the licence stored as a preference.
+   shows the yes/no has-licence preference stored, not the licence details.
 3. Flip the mock to a contract-violating shape: a drift warning surfaces, the
    user is still served (tolerant of additive change).
 4. Remove a field from a schema: the consumer typecheck fails.
