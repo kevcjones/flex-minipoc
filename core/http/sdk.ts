@@ -38,11 +38,23 @@ interface ApiGatewayEvent {
   } | null;
 }
 
+const CONTROL = Symbol.for("flex.http.control");
+
+/**
+ * Return an explicit non-200 (or custom-status) response from a handler. Plain
+ * data returns still become 200; use reply() only when you need to set the
+ * status. A branded marker is used so that domain data which merely happens to
+ * have a `status` or `data` field is never mistaken for a control envelope.
+ */
+export function reply(status: number, data?: unknown): HandlerResult {
+  return { [CONTROL]: true, status, data } as HandlerResult;
+}
+
 function isHandlerResult(value: unknown): value is HandlerResult {
   return (
     typeof value === "object" &&
     value !== null &&
-    ("status" in value || "data" in value)
+    (value as Record<symbol, unknown>)[CONTROL] === true
   );
 }
 

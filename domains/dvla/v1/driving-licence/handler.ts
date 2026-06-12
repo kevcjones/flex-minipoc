@@ -1,4 +1,4 @@
-import { createHandler } from "@flex/sdk/http";
+import { createHandler, reply } from "@flex/sdk/http";
 
 import { DrivingLicence } from "../../schema/driving-licence";
 
@@ -13,12 +13,15 @@ import { DrivingLicence } from "../../schema/driving-licence";
  */
 export const handler = createHandler(async (input) => {
   const base = (process.env.FLEX_MOCK_DVLA_URL ?? "").replace(/\/$/, "");
-  const res = await fetch(`${base}/driving-licence`, {
+  const search = new URLSearchParams();
+  for (const [k, v] of Object.entries(input.query)) if (v != null) search.set(k, v);
+  const qs = search.toString();
+  const res = await fetch(`${base}/driving-licence${qs ? `?${qs}` : ""}`, {
     headers: { "x-dvla-linking-id": input.auth.linkingId ?? "" },
   });
 
   if (!res.ok) {
-    return { status: 502, data: { error: `upstream ${res.status}` } };
+    return reply(502, { error: `upstream ${res.status}` });
   }
 
   const raw = await res.json();
