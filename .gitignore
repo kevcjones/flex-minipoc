@@ -12,3 +12,7 @@ config.ts
 
 # OS junk
 .DS_Store
+
+# Private thinking, kept locally but out of the repo
+docs/flex-vision-questions.md
+docs/rollout.md
