@@ -10,10 +10,14 @@
  * deployable capabilities (udp, telemetry) additionally have stack.ts +
  * handlers/. http is an SDK-only module with no service behind it.
  */
+import { runPostHooks } from "./hooks";
+
 export interface HandlerInput {
   params: Record<string, string | undefined>;
   query: Record<string, string | undefined>;
   body: unknown;
+  /** Resolved by the authorizer and passed through; the handler never resolves it. */
+  auth: { userId?: string; linkingId?: string };
 }
 
 export interface HandlerResult {
@@ -29,6 +33,9 @@ interface ApiGatewayEvent {
   pathParameters?: Record<string, string | undefined> | null;
   queryStringParameters?: Record<string, string | undefined> | null;
   body?: string | null;
+  requestContext?: {
+    authorizer?: Record<string, string | undefined> | null;
+  } | null;
 }
 
 function isHandlerResult(value: unknown): value is HandlerResult {
@@ -45,16 +52,21 @@ function isHandlerResult(value: unknown): value is HandlerResult {
  */
 export function createHandler(fn: DomainHandler) {
   return async (event: ApiGatewayEvent) => {
+    const authorizer = event.requestContext?.authorizer ?? {};
     const input: HandlerInput = {
       params: event.pathParameters ?? {},
       query: event.queryStringParameters ?? {},
       body: event.body ? JSON.parse(event.body) : undefined,
+      auth: { userId: authorizer.userId, linkingId: authorizer.linkingId },
     };
 
     const result = await fn(input);
 
     const status = isHandlerResult(result) ? (result.status ?? 200) : 200;
     const data = isHandlerResult(result) ? result.data : result;
+
+    // Post-hooks declared on the route, run inline after the handler returns.
+    await runPostHooks(process.env.FLEX_POST_HOOKS, { data, input });
 
     return {
       statusCode: status,

@@ -5,8 +5,12 @@ export interface DiscoveredRoute {
   method: string;
   // API path relative to the domain, e.g. "v1/hello". Empty string = domain root.
   apiPath: string;
-  // Absolute path to the handler file to bundle.
-  entry: string;
+  // The route folder.
+  dir: string;
+  // route.ts declaration (config-driven routes). Absent for legacy handlers.
+  routeConfig?: string;
+  // handler.ts to bundle (execution + legacy routes). Absent for pure pass-through.
+  handler?: string;
 }
 
 export interface DiscoveredDomain {
@@ -21,14 +25,12 @@ const DOMAINS_DIR = join(__dirname, "..", "..", "domains");
 /**
  * Filesystem is the source of truth.
  *
- *   domains/<domain>/<...segments>/handler.ts
+ *   domains/<domain>/<...segments>/route.ts      a declared route (config-driven)
+ *   domains/<domain>/<...segments>/handler.ts    a handler (execution or legacy)
  *
- * becomes a route on <domain> at the path formed by <...segments>. So
- * domains/foo/v1/hello/handler.ts is GET /v1/hello on domain foo, reachable
- * publicly at /foo/v1/hello.
- *
- * Adding a route is adding a folder with a handler.ts. Adding a domain is
- * adding a top-level folder. No central list to edit.
+ * becomes a route on <domain> at the path formed by <...segments>. A folder with
+ * a route.ts is wired from its declaration; a folder with only a handler.ts is a
+ * legacy execution route. Adding a route is adding a folder. No central list.
  */
 export function discoverDomains(): DiscoveredDomain[] {
   if (!existsSync(DOMAINS_DIR)) return [];
@@ -45,13 +47,25 @@ export function discoverDomains(): DiscoveredDomain[] {
 function discoverRoutes(dir: string, segments: string[]): DiscoveredRoute[] {
   const routes: DiscoveredRoute[] = [];
 
+  const routeConfig = join(dir, "route.ts");
   const handler = join(dir, "handler.ts");
-  if (existsSync(handler)) {
-    routes.push({ method: "GET", apiPath: segments.join("/"), entry: handler });
+  const hasRoute = existsSync(routeConfig);
+  const hasHandler = existsSync(handler);
+
+  if (hasRoute || hasHandler) {
+    routes.push({
+      method: "GET",
+      apiPath: segments.join("/"),
+      dir,
+      routeConfig: hasRoute ? routeConfig : undefined,
+      handler: hasHandler ? handler : undefined,
+    });
   }
 
   for (const child of readdirSync(dir)) {
     const childPath = join(dir, child);
+    // schema/ holds contracts, not routes; never walk it for routes.
+    if (child === "schema") continue;
     if (statSync(childPath).isDirectory()) {
       routes.push(...discoverRoutes(childPath, [...segments, child]));
     }
