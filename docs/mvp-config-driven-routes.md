@@ -107,8 +107,10 @@ consumer/                           minimal typed consumer + typecheck proof (no
    into the upstream path server-side though the caller chose none.
 2. `GET /dvla/v1/vehicle` returns the vehicle; a follow-up UDP read shows the
    yes/no has-vehicle preference stored, not the vehicle details.
-3. `x-user-id: 2000` (out of range): the upstream returns an off-contract shape,
-   a drift warning surfaces, and the request is still served (graded).
+3. `x-user-id: 2000` (out of range): `users/{id}` returns `{}` (HTTP 200), so the
+   consumer's on-receive validation logs a drift warning. (The vehicle route's
+   bad-id path surfaces as an upstream 502, since the cars API returns an error
+   status rather than an off-contract 200.)
 4. Remove a field from a schema: the consumer typecheck fails.
 5. Add/remove the `dvla` folder: the builder adds/removes the routes, CloudFront
    untouched.
