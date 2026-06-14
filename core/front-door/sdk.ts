@@ -33,6 +33,9 @@ export function makeView<R extends Registry>(routes: R) {
     createHandler(async (input) => {
       const base = (process.env.FLEX_FRONT_DOOR_URL ?? "").replace(/\/$/, "");
       const userId = input.auth.userId;
+      // Propagate the id the channel authorizer already resolved, so downstream
+      // authorizers short-circuit instead of re-resolving identity from scratch.
+      const resolvedId = input.auth.linkingId ?? userId;
 
       const ctx: ViewContext<R> = {
         identity: { userId },
@@ -40,7 +43,7 @@ export function makeView<R extends Registry>(routes: R) {
           const [method, path] = String(key).split(" ");
           const res = await fetch(`${base}${path}`, {
             method,
-            headers: userId ? { "x-user-id": userId } : {},
+            headers: resolvedId ? { "x-user-id": resolvedId } : {},
           });
           if (!res.ok) return { ok: false, status: res.status };
 

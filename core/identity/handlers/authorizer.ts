@@ -52,6 +52,11 @@ export async function handler(event: AuthorizerEvent) {
   const userId = header(event.headers, "x-user-id") ?? "demo-user";
   const linkingId = await resolveId(userId);
 
+  // Wildcard the stage so a cached policy authorizes every method for this user,
+  // not just the one that populated the cache (REQUEST authorizer caching reuses
+  // the policy across the fan-out's different methods).
+  const stageArn = event.methodArn.split("/").slice(0, 2).join("/") + "/*";
+
   return {
     principalId: userId,
     policyDocument: {
@@ -60,7 +65,7 @@ export async function handler(event: AuthorizerEvent) {
         {
           Action: "execute-api:Invoke",
           Effect: "Allow",
-          Resource: event.methodArn,
+          Resource: stageArn,
         },
       ],
     },
