@@ -5,7 +5,6 @@ import {
   AuthorizationType,
   CfnBasePathMapping,
   HttpIntegration,
-  IdentitySource,
   IResource,
   LambdaIntegration,
   RequestAuthorizer,
@@ -71,11 +70,10 @@ export class DomainStack extends Stack {
         });
         authorizer = new RequestAuthorizer(this, "Authorizer", {
           handler: authFn,
-          // Cache the resolved identity keyed on x-user-id, so repeat requests
-          // from the same user skip the authorizer lambda and its UDP lookup.
-          // (Makes x-user-id required: a missing header now 401s at the edge.)
-          identitySources: [IdentitySource.header("x-user-id")],
-          resultsCacheTtl: Duration.seconds(300),
+          // No identity source: the authorizer runs on every request so a
+          // missing x-user-id can fall back to the demo user (POC).
+          identitySources: [],
+          resultsCacheTtl: Duration.seconds(0),
         });
       }
       return authorizer;

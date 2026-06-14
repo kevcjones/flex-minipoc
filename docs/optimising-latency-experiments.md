@@ -36,6 +36,10 @@ upper bound (maximum request locality); real mixed traffic would see less.
 Run-to-run noise on p50 is ~±0.03s (the two external calls dominate), so read
 0.559 and 0.587 as the same value, not a regression.
 
+Retained in the branch: experiment 1 only. Experiment 2 was measured then
+reverted (noise, and it makes x-user-id required); 3 and 4 added no code. The
+value of the rest is the documented negative result, not code in the tree.
+
 ## Baseline
 
 The current setup: the raw user id is propagated, so every tier re-resolves
@@ -79,6 +83,10 @@ warm, single-user, sequential benchmark. Caching still earns its place under
 load (one fewer lambda invocation per request, cutting concurrency, cost and
 cold-start tail), and this confirms the earlier point that caching overlaps with
 propagation: once identity is propagated, caching it adds little here.
+
+**Decision: reverted.** A noise-level gain that also makes x-user-id required is
+not worth the behaviour change, so it is not retained in the branch; it stays
+here as a measured negative result.
 
 ## Experiment 3: async post-hook
 
