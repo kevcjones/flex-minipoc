@@ -13,6 +13,9 @@ config.ts
 # OS junk
 .DS_Store
 
+# Tool caches
+.serena/
+
 # Private thinking, kept locally but out of the repo
 docs/flex-vision-questions.md
 docs/rollout.md
