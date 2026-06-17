@@ -230,7 +230,6 @@ the cert.
 
 ## Further reading
 
-- `PRINCIPLES.md` — the principles this POC explores, and what it deliberately
-  simplifies.
-- `docs/execution-layer.md` — an open design question: where the platform runs
-  pre and post domain logic, with the options and their fit.
+- `docs/architecture.md` - the planes, the route model, L1/L2, and contracts.
+- `docs/topology.md` - how it is wired at runtime and what each layer does.
+- `PRINCIPLES.md` - the principles this POC explores and what it simplifies.
