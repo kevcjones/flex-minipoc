@@ -40,7 +40,7 @@ const ENABLE_CACHE = false;
  * Each route is one of:
  *  - passthrough: an HTTP integration to an upstream, authorizer injects the
  *    per-user token, no handler lambda.
- *  - execution:   a NodejsFunction from the sibling handler.ts, with post-hooks
+ *  - execution:   a NodejsFunction from the sibling handler.ts, with effects
  *    serialised into its env.
  *  - legacy:      a handler.ts with no route.ts, wired as a plain lambda route
  *    (the original POC shape, still supported).
@@ -227,7 +227,7 @@ export class DomainStack extends Stack {
             `Route ${domainName}/${route.apiPath} needs a handler.ts`,
           );
         }
-        const post = config?.kind === "execution" ? config.post : undefined;
+        const effects = config?.kind === "execution" ? config.effects : undefined;
         const timeoutSeconds =
           (config?.kind === "execution" ? config.timeout : undefined) ?? 10;
         const fn = new NodejsFunction(this, `Fn${slug}`, {
@@ -242,7 +242,7 @@ export class DomainStack extends Stack {
             // The back-door: channel views reach domain resources here (the
             // gateway host directly, not CloudFront), with the user identity.
             FLEX_FRONT_DOOR_URL: `https://${GATEWAY_HOST}`,
-            FLEX_POST_HOOKS: JSON.stringify(post ?? []),
+            FLEX_EFFECTS: JSON.stringify(effects ?? []),
           },
         });
 

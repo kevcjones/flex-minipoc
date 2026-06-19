@@ -10,7 +10,7 @@
  * deployable capabilities (udp, telemetry) additionally have stack.ts +
  * handlers/. http is an SDK-only module with no service behind it.
  */
-import { runPostHooks } from "./hooks";
+import { runEffects } from "../effects/sdk";
 
 export interface HandlerInput {
   params: Record<string, string | undefined>;
@@ -91,8 +91,8 @@ export function createHandler(fn: DomainHandler) {
     const data = control ? result.data : result;
     const contentType = control ? result.contentType : undefined;
 
-    // Post-hooks declared on the route, run inline after the handler returns.
-    await runPostHooks(process.env.FLEX_POST_HOOKS, { data, input });
+    // Effects declared on the route, run after the handler returns.
+    await runEffects(process.env.FLEX_EFFECTS, { data, input });
 
     const json = !contentType || contentType.includes("json");
     return {

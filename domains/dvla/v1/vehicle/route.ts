@@ -12,6 +12,6 @@ export default defineRoute({
   kind: "execution",
   auth: "udp-linked:dvla",
   output: Vehicle,
-  post: [{ udpWrite: { key: "dvla.hasVehicle", value: true } }],
+  effects: [{ udpWrite: { key: "dvla.hasVehicle", value: true } }],
   drift: "inline",
 });
