@@ -92,20 +92,21 @@ Functionless's failure is the argument for the config-interpreter form: we do
 not need general TypeScript-to-VTL, only config-to-template for a small fixed
 vocabulary.
 
-Status: spike built (branch `feat/transform-tier`). The config interpreter
-(`@flex/sdk/transform`) compiles the vocabulary above to a VTL integration
-response template, wired by the builder as a non-proxy pass-through (tier 2).
-Verified locally: typecheck, unit tests asserting the emitted VTL per operation,
-and `cdk synth` showing the template in the CloudFormation. The demo is
-`domains/dvla/v1/profile`, which drops `password` and flattens the `User`
-envelope with no Lambda, the case the user/ schema doc flagged as needing
-execution.
+Status: built and verified on deploy (branch `feat/transform-tier`). The config
+interpreter (`@flex/sdk/transform`) compiles the vocabulary above to a VTL
+integration response template, wired by the builder as a non-proxy pass-through
+(tier 2). The demo is `domains/dvla/v1/profile`, which drops `password` and
+flattens the `User` envelope with no Lambda, the case the user/ schema doc
+flagged as needing execution. Confirmed live: flattened, renamed, password
+dropped, const and coalesce applied, with the id driven by the authoriser.
 
-Not used: a local Velocity executor (ToQoz). The map-plus-toJson idiom is
-Java-Velocity specific and the JS emulators do not implement it faithfully, so
-full semantic proof is deferred to deploy rather than chased with a fragile
-emulator. The open call the spike informs: are gateway transforms common enough
-to own the generator, or should reshapes just use a tier-3 Lambda.
+Deploy lesson (important for anyone extending this): in API Gateway's Velocity,
+`$util.toJson()` of a value read via `$input.path` (and of a `{}`-built map)
+returns empty, so the natural map-and-toJson idiom silently yields an empty body.
+The generator instead builds the JSON as text and reads each value with
+`$input.json`, which returns it already typed and quoted. Because the transform
+is bound to the output contract, every field always emits, so comma placement is
+static and the classic conditional-comma fragility does not arise.
 
 ## Identity contract
 
