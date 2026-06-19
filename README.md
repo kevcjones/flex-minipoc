@@ -230,6 +230,6 @@ the cert.
 
 ## Further reading
 
-- `docs/architecture.md` - the planes, the route model, L1/L2, and contracts.
-- `docs/topology.md` - how it is wired at runtime and what each layer does.
+- `docs/architecture.md` - the top-level folders, the request flow, and contracts.
+- `docs/how-to.md` - recipes for each thing FLEX can do, with steps.
 - `PRINCIPLES.md` - the principles this POC explores and what it simplifies.
