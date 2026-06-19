@@ -32,39 +32,51 @@ export interface DiscoveredDomain {
 // channels/) are two levels up.
 const PLANES_ROOT = join(__dirname, "..", "..");
 
-/**
- * Filesystem is the source of truth.
- *
- *   domains/<domain>/<...segments>/route.ts      a declared route (config-driven)
- *   domains/<domain>/<...segments>/handler.ts    a handler (execution or legacy)
- *
- * becomes a route on <domain> at the path formed by <...segments>. A folder with
- * a route.ts is wired from its declaration; a folder with only a handler.ts is a
- * legacy execution route. Adding a route is adding a folder. No central list.
- */
-/** Discover a plane of route folders (domains/ or channels/). */
-export function discoverPlane(planeDir: string): DiscoveredDomain[] {
+function units(planeDir: string): string[] {
   if (!existsSync(planeDir)) return [];
+  return readdirSync(planeDir).filter((entry) =>
+    statSync(join(planeDir, entry)).isDirectory(),
+  );
+}
 
-  return readdirSync(planeDir)
-    .filter((entry) => statSync(join(planeDir, entry)).isDirectory())
+/**
+ * Filesystem is the source of truth, organised by facet.
+ *
+ *   domains/<domain>/api/<...segments>/route.ts   a declared route
+ *   domains/<domain>/events/v<n>/<event>.ts       a produced event contract
+ *   domains/<domain>/subscriptions/<name>/        a reaction
+ *
+ * A domain's routes live under its api/ facet (versioned for client reasons);
+ * the api segment is structural, so routes are discovered from inside it and the
+ * public path is what follows (api/v1/vehicle -> /dvla/v1/vehicle). Each facet
+ * has its own version axis. Adding a route is adding a folder. No central list.
+ */
+export function discoverDomains(): DiscoveredDomain[] {
+  const root = join(PLANES_ROOT, "domains");
+  return units(root)
     .map((name) => ({
       name,
-      routes: discoverRoutes(join(planeDir, name), []),
-      subscriptions: discoverSubscriptions(join(planeDir, name)),
+      routes: discoverRoutes(join(root, name, "api"), []),
+      subscriptions: discoverSubscriptions(join(root, name)),
     }))
     .filter((unit) => unit.routes.length > 0 || unit.subscriptions.length > 0);
 }
 
-export function discoverDomains(): DiscoveredDomain[] {
-  return discoverPlane(join(PLANES_ROOT, "domains"));
-}
-
+/** Channels are composition views, not domains: routes live flat, no facets. */
 export function discoverChannels(): DiscoveredDomain[] {
-  return discoverPlane(join(PLANES_ROOT, "channels"));
+  const root = join(PLANES_ROOT, "channels");
+  return units(root)
+    .map((name) => ({
+      name,
+      routes: discoverRoutes(join(root, name), []),
+      subscriptions: discoverSubscriptions(join(root, name)),
+    }))
+    .filter((unit) => unit.routes.length > 0 || unit.subscriptions.length > 0);
 }
 
 function discoverRoutes(dir: string, segments: string[]): DiscoveredRoute[] {
+  if (!existsSync(dir)) return [];
+
   const routes: DiscoveredRoute[] = [];
 
   const routeConfig = join(dir, "route.ts");

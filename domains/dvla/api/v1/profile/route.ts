@@ -1,6 +1,6 @@
 import { defineRoute } from "@flex/sdk/routes";
 
-import { Profile } from "../../schema/profile";
+import { Profile } from "../schema/profile";
 
 /**
  * Tier 2: pass-through + transform. Same upstream as user/, but the gateway

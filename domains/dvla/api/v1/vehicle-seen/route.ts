@@ -1,6 +1,6 @@
 import { defineRoute } from "@flex/sdk/routes";
 
-import { VehicleSeen } from "../../schema/vehicle-seen";
+import { VehicleSeen } from "../schema/vehicle-seen";
 
 /**
  * Read from Dynamo. Reads back what the /vehicle route's emitEvent effect

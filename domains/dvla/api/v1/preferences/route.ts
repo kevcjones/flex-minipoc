@@ -1,6 +1,6 @@
 import { defineRoute } from "@flex/sdk/routes";
 
-import { Preferences } from "../../schema/preferences";
+import { Preferences } from "../schema/preferences";
 
 /**
  * Read from Dynamo. Reads back the preference the vehicle route wrote on its hot

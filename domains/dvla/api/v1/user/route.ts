@@ -1,6 +1,6 @@
 import { defineRoute } from "@flex/sdk/routes";
 
-import { User } from "../../schema/user";
+import { User } from "../schema/user";
 
 /**
  * Pass-through. The gateway forwards to the upstream with the record id chosen

@@ -1,8 +1,8 @@
 import { emit } from "@flex/sdk/events";
 import { defineRoute } from "@flex/sdk/routes";
 
-import { VehicleSeen } from "../../events/v1/vehicle-seen";
-import { Vehicle } from "../../schema/vehicle";
+import { VehicleSeen } from "../../../events/v1/vehicle-seen";
+import { Vehicle } from "../schema/vehicle";
 
 /**
  * Execution. A handler pulls the vehicle for the authorizer's record id,

@@ -9,8 +9,8 @@
  */
 import { makeView, type Registry } from "@flex/sdk/front-door";
 
-import { User } from "../domains/dvla/schema/user";
-import { Vehicle } from "../domains/dvla/schema/vehicle";
+import { User } from "../domains/dvla/api/v1/schema/user";
+import { Vehicle } from "../domains/dvla/api/v1/schema/vehicle";
 
 export const routes = {
   "GET /dvla/v1/user": { output: User },

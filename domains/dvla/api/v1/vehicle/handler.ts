@@ -1,6 +1,6 @@
 import { createHandler, reply } from "@flex/sdk/http";
 
-import { Vehicle } from "../../schema/vehicle";
+import { Vehicle } from "../schema/vehicle";
 
 /**
  * Pulls the vehicle for the record id the authorizer resolved, unwraps the

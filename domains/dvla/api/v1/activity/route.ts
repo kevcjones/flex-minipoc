@@ -1,7 +1,7 @@
 import { defineRoute } from "@flex/sdk/routes";
 
-import { ActivityRecorded } from "../../events/v1/activity-recorded";
-import { Ack } from "../../schema/ack";
+import { ActivityRecorded } from "../../../events/v1/activity-recorded";
+import { Ack } from "../schema/ack";
 
 /**
  * Write off the hot path, no Lambda. API Gateway publishes the request to the

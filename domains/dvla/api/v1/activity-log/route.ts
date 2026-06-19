@@ -1,6 +1,6 @@
 import { defineRoute } from "@flex/sdk/routes";
 
-import { ActivityLog } from "../../schema/activity";
+import { ActivityLog } from "../schema/activity";
 
 /**
  * Read from Dynamo. Reads back the activity the POST dvla/v1/activity route
