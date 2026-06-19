@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { compileToVtl } from "./sdk";
+import { compilePutEvents, compileToVtl } from "./sdk";
 
 test("builds a map and serialises it once with toJson", () => {
   const vtl = compileToVtl({ fields: { id: "$.User.id" } });
@@ -85,4 +85,22 @@ test("the profile demo shape exercises pick, omit, default, coalesce and const",
   assert.match(vtl, /#set\(\$v = "Unknown"\)/);
   assert.match(vtl, /#set\(\$v = "Anonymous"\)/);
   assert.match(vtl, /\$out\.put\("source", "dvla"\)/);
+});
+
+test("compilePutEvents builds a PutEvents request: stamped userId, mapped detail, escaped", () => {
+  const vtl = compilePutEvents({
+    source: "flex.dvla.activity",
+    detailType: "activity.recorded",
+    busName: "flex-mini-dvla",
+    detail: { fields: { note: "$.note" } },
+  });
+  assert.match(vtl, /"Source": "flex\.dvla\.activity"/);
+  assert.match(vtl, /"DetailType": "activity\.recorded"/);
+  assert.match(vtl, /"EventBusName": "flex-mini-dvla"/);
+  // the userId is stamped from the authoriser so the consumer can scope it
+  assert.match(vtl, /\$out\.put\("userId", \$context\.authorizer\.userId\)/);
+  // the detail map reads the request body
+  assert.match(vtl, /\$input\.path\('\$\.note'\)/);
+  // Detail must be an escaped JSON string for PutEvents
+  assert.match(vtl, /"Detail": "\$util\.escapeJavaScript\(\$util\.toJson\(\$out\)\)"/);
 });

@@ -3,6 +3,7 @@ import { join } from "path";
 import { CfnOutput, Duration, Stack, StackProps } from "aws-cdk-lib";
 import {
   AuthorizationType,
+  AwsIntegration,
   CfnBasePathMapping,
   HttpIntegration,
   IResource,
@@ -10,13 +11,16 @@ import {
   RequestAuthorizer,
   RestApi,
 } from "aws-cdk-lib/aws-apigateway";
+import { EventBus, Match, Rule } from "aws-cdk-lib/aws-events";
+import { LambdaFunction as LambdaTarget } from "aws-cdk-lib/aws-events-targets";
+import { Role, ServicePrincipal } from "aws-cdk-lib/aws-iam";
 import { Runtime } from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Construct } from "constructs";
 
 import { GATEWAY_HOST, INTERNAL_HOST, PUBLIC_HOST } from "../../config";
 import type { RouteConfig } from "../../core/routes/sdk";
-import { compileToVtl } from "../../core/transform/sdk";
+import { compilePutEvents, compileToVtl } from "../../core/transform/sdk";
 import { DiscoveredRoute } from "./discover";
 
 interface DomainStackProps extends StackProps {
@@ -80,10 +84,42 @@ export class DomainStack extends Stack {
       return authorizer;
     };
 
+    // The off-hot-path router, created once when the first publish route appears:
+    // an EventBridge bus, an async consumer that does the durable write, and a
+    // role that lets API Gateway publish to the bus directly (no edge lambda).
+    let router: { bus: EventBus; publishRole: Role } | undefined;
+    const eventRouter = (): { bus: EventBus; publishRole: Role } => {
+      if (!router) {
+        const bus = new EventBus(this, "Bus", {
+          eventBusName: `flex-mini-${domainName}`,
+        });
+        const consumerFn = new NodejsFunction(this, "EventConsumerFn", {
+          entry: join(__dirname, "..", "..", "core", "events", "handlers", "consumer.ts"),
+          handler: "handler",
+          runtime: Runtime.NODEJS_20_X,
+          timeout: Duration.seconds(10),
+          environment: { FLEX_UDP_URL: udpUrl },
+        });
+        new Rule(this, "EventRule", {
+          eventBus: bus,
+          eventPattern: { source: Match.prefix(`flex.${domainName}`) },
+          targets: [new LambdaTarget(consumerFn)],
+        });
+        const publishRole = new Role(this, "PublishRole", {
+          assumedBy: new ServicePrincipal("apigateway.amazonaws.com"),
+        });
+        bus.grantPutEventsTo(publishRole);
+        router = { bus, publishRole };
+      }
+      return router;
+    };
+
     for (const route of routes) {
       const slug = slugFor(route.apiPath);
       const config = loadConfig(route);
       const resource = addDeepResource(api.root, route.apiPath);
+      // Publish routes are writes; everything else is a GET in this POC.
+      const httpMethod = config?.kind === "publish" ? "POST" : route.method;
 
       const authOptions =
         config && config.auth !== "none"
@@ -108,7 +144,7 @@ export class DomainStack extends Stack {
           // attach an integration response template. Still no handler lambda.
           const responseTemplate = compileToVtl(config.transform);
           resource.addMethod(
-            route.method,
+            httpMethod,
             new HttpIntegration(uri, {
               httpMethod: method,
               proxy: false,
@@ -132,7 +168,7 @@ export class DomainStack extends Stack {
           );
         } else {
           resource.addMethod(
-            route.method,
+            httpMethod,
             new HttpIntegration(uri, {
               httpMethod: method,
               proxy: true,
@@ -144,6 +180,46 @@ export class DomainStack extends Stack {
             },
           );
         }
+      } else if (config?.kind === "publish") {
+        // Write off the hot path: API Gateway publishes to the router
+        // (EventBridge) via a VTL request template and returns the ack
+        // immediately. No edge lambda; an async consumer does the durable write.
+        const { bus, publishRole } = eventRouter();
+        const requestTemplate = compilePutEvents({
+          source: config.event.source,
+          detailType: config.event.detailType,
+          busName: bus.eventBusName,
+          detail: config.event.detail,
+        });
+        resource.addMethod(
+          httpMethod,
+          new AwsIntegration({
+            service: "events",
+            action: "PutEvents",
+            options: {
+              credentialsRole: publishRole,
+              requestParameters: {
+                "integration.request.header.X-Amz-Target":
+                  "'AWSEvents.PutEvents'",
+                "integration.request.header.Content-Type":
+                  "'application/x-amz-json-1.1'",
+              },
+              requestTemplates: { "application/json": requestTemplate },
+              integrationResponses: [
+                {
+                  statusCode: "202",
+                  responseTemplates: {
+                    "application/json": '{"accepted":true}',
+                  },
+                },
+              ],
+            },
+          }),
+          {
+            ...authOptions,
+            methodResponses: [{ statusCode: "202" }],
+          },
+        );
       } else {
         // execution (route.ts kind=execution) or legacy (handler.ts only)
         if (!route.handler) {
@@ -168,11 +244,11 @@ export class DomainStack extends Stack {
           },
         });
 
-        resource.addMethod(route.method, new LambdaIntegration(fn), authOptions);
+        resource.addMethod(httpMethod, new LambdaIntegration(fn), authOptions);
       }
 
       new CfnOutput(this, `Route${slug}`, {
-        value: `${route.method} https://${PUBLIC_HOST}/${domainName}/${route.apiPath}`,
+        value: `${httpMethod} https://${PUBLIC_HOST}/${domainName}/${route.apiPath}`,
       });
     }
 

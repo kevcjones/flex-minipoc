@@ -53,12 +53,46 @@ export interface TransformSpec {
  * harmless leading whitespace before the JSON, which every parser tolerates.
  */
 export function compileToVtl(spec: TransformSpec): string {
-  const lines = ["#set($out = {})"];
+  return ["#set($out = {})", ...compileFields(spec), "$util.toJson($out)"].join(
+    "\n",
+  );
+}
+
+/**
+ * Compile a VTL request template that publishes the request to EventBridge
+ * (PutEvents) off the hot path, no Lambda. The detail spec maps the request
+ * (body/params, read via $input) into the event detail, the same vocabulary as
+ * compileToVtl. The authoriser userId is stamped in so the async consumer can
+ * scope the write. PutEvents needs Detail to be a JSON string, so the built map
+ * is serialised with toJson and escaped.
+ */
+export function compilePutEvents(opts: {
+  source: string;
+  detailType: string;
+  busName: string;
+  detail: TransformSpec;
+}): string {
+  return [
+    "#set($out = {})",
+    '#set($d = $out.put("userId", $context.authorizer.userId))',
+    ...compileFields(opts.detail),
+    "{",
+    '  "Entries": [{',
+    `    "Source": ${JSON.stringify(opts.source)},`,
+    `    "DetailType": ${JSON.stringify(opts.detailType)},`,
+    `    "EventBusName": ${JSON.stringify(opts.busName)},`,
+    '    "Detail": "$util.escapeJavaScript($util.toJson($out))"',
+    "  }]",
+    "}",
+  ].join("\n");
+}
+
+function compileFields(spec: TransformSpec): string[] {
+  const lines: string[] = [];
   for (const [key, field] of Object.entries(spec.fields)) {
     lines.push(...compileField(key, field));
   }
-  lines.push("$util.toJson($out)");
-  return lines.join("\n");
+  return lines;
 }
 
 function compileField(key: string, field: TransformField): string[] {

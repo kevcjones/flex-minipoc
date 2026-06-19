@@ -84,9 +84,29 @@ export interface ExecutionRoute<O extends ZodTypeAny = ZodTypeAny>
   drift?: "inline" | "off";
 }
 
+/**
+ * A write off the hot path, no handler lambda. The gateway publishes the request
+ * to the router (EventBridge) via a VTL request template and returns an ack
+ * immediately; an async consumer does the durable write. `output` is the ack
+ * shape the caller gets back, not the written record.
+ */
+export interface PublishRoute<O extends ZodTypeAny = ZodTypeAny>
+  extends BaseRoute<O> {
+  kind: "publish";
+  event: {
+    /** EventBridge event source, e.g. "flex.dvla.activity". */
+    source: string;
+    /** EventBridge detail-type, e.g. "activity.recorded". */
+    detailType: string;
+    /** Maps the request into the event detail (same vocabulary as transform). */
+    detail: TransformSpec;
+  };
+}
+
 export type RouteConfig<O extends ZodTypeAny = ZodTypeAny> =
   | PassthroughRoute<O>
-  | ExecutionRoute<O>;
+  | ExecutionRoute<O>
+  | PublishRoute<O>;
 
 /**
  * Identity helper: infers the output schema so the transform (and anything else
