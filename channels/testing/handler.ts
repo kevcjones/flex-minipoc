@@ -44,24 +44,27 @@ interface Pattern {
 }
 
 async function runScenario(): Promise<Pattern[]> {
-  // A. pass-through
-  const user = await call("forwarded verbatim", "GET", "/dvla/v1/user");
+  // Independent reads and the "before" snapshots run concurrently to keep the
+  // page fast (each back-door call re-runs the authorizer and hits the upstream).
+  const [user, profile, prefBefore, logBefore] = await Promise.all([
+    call("forwarded verbatim", "GET", "/dvla/v1/user"),
+    call("reshaped in the gateway", "GET", "/dvla/v1/profile"),
+    call("preference before", "GET", "/dvla/v1/preferences"),
+    call("activity before", "GET", "/dvla/v1/activity-log"),
+  ]);
 
-  // B. transform (no Lambda)
-  const profile = await call("reshaped in the gateway", "GET", "/dvla/v1/profile");
-
-  // C. execution + sync write, read back
-  const prefBefore = await call("preference before", "GET", "/dvla/v1/preferences");
+  // C. execution + sync write, then read back (ordered for before/after).
   const vehicle = await call("read + sync write", "GET", "/dvla/v1/vehicle");
   const prefAfter = await call("preference after", "GET", "/dvla/v1/preferences");
 
-  // D. off-hot-path write, read back (dynamic before/after via a unique note)
-  const logBefore = await call("activity before", "GET", "/dvla/v1/activity-log");
+  // D. off-hot-path write, read back (dynamic before/after via a unique note).
   const note = `run-${new Date().toISOString()}`;
   const publish = await call("publish (202, no Lambda)", "POST", "/dvla/v1/activity", { note });
+  // Poll briefly for the async write, bounded to stay well under the Lambda
+  // timeout (the page can be reloaded if the consumer has not caught up yet).
   let logAfter = await call("activity after", "GET", "/dvla/v1/activity-log");
-  for (let i = 0; i < 6 && !logAfter.body.includes(note); i++) {
-    await sleep(800);
+  for (let i = 0; i < 8 && !logAfter.body.includes(note); i++) {
+    await sleep(700);
     logAfter = await call(`activity after (poll ${i + 1})`, "GET", "/dvla/v1/activity-log");
   }
 

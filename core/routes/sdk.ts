@@ -82,6 +82,9 @@ export interface ExecutionRoute<O extends ZodTypeAny = ZodTypeAny>
   post?: PostHook[];
   /** How to verify the upstream/result against output. Default inline. */
   drift?: "inline" | "off";
+  /** Lambda timeout in seconds. Default 10. Raise for composition views that
+   * fan out to several back-door calls. */
+  timeout?: number;
 }
 
 /**

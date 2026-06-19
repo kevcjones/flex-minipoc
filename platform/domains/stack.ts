@@ -228,11 +228,13 @@ export class DomainStack extends Stack {
           );
         }
         const post = config?.kind === "execution" ? config.post : undefined;
+        const timeoutSeconds =
+          (config?.kind === "execution" ? config.timeout : undefined) ?? 10;
         const fn = new NodejsFunction(this, `Fn${slug}`, {
           entry: route.handler,
           handler: "handler",
           runtime: Runtime.NODEJS_20_X,
-          timeout: Duration.seconds(10),
+          timeout: Duration.seconds(timeoutSeconds),
           environment: {
             FLEX_UDP_URL: udpUrl,
             FLEX_TELEMETRY_URL: telemetryUrl,

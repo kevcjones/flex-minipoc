@@ -14,4 +14,6 @@ export default defineRoute({
   kind: "execution",
   auth: "none",
   output: z.string(),
+  // Fans out to several back-door calls plus a short async poll; give it room.
+  timeout: 29,
 });
