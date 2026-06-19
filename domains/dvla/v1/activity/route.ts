@@ -1,5 +1,6 @@
 import { defineRoute } from "@flex/sdk/routes";
 
+import { ActivityRecorded } from "../../events/v1/activity-recorded";
 import { Ack } from "../../schema/ack";
 
 /**
@@ -16,8 +17,9 @@ export default defineRoute({
   auth: "udp-linked:dvla",
   output: Ack,
   event: {
-    source: "flex.dvla.activity",
-    detailType: "activity.recorded",
+    // Identity from the producer-owned contract; detail maps the request body.
+    source: ActivityRecorded.source,
+    detailType: ActivityRecorded.detailType,
     detail: {
       fields: {
         note: "$.note",

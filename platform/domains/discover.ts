@@ -84,9 +84,11 @@ function discoverRoutes(dir: string, segments: string[]): DiscoveredRoute[] {
 
   for (const child of readdirSync(dir)) {
     const childPath = join(dir, child);
-    // schema/ holds contracts and subscriptions/ holds event reactions; neither
-    // is a route, so never walk them for routes.
-    if (child === "schema" || child === "subscriptions") continue;
+    // schema/ holds contracts, events/ holds event contracts, subscriptions/
+    // holds event reactions; none is a route, so never walk them for routes.
+    if (child === "schema" || child === "subscriptions" || child === "events") {
+      continue;
+    }
     if (statSync(childPath).isDirectory()) {
       routes.push(...discoverRoutes(childPath, [...segments, child]));
     }

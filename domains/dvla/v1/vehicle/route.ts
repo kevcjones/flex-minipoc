@@ -1,5 +1,7 @@
+import { emit } from "@flex/sdk/events";
 import { defineRoute } from "@flex/sdk/routes";
 
+import { VehicleSeen } from "../../events/v1/vehicle-seen";
 import { Vehicle } from "../../schema/vehicle";
 
 /**
@@ -18,7 +20,7 @@ export default defineRoute({
   output: Vehicle,
   effects: [
     { udpWrite: { key: "dvla.hasVehicle", value: true } },
-    { emitEvent: { source: "flex.dvla.vehicle", detailType: "vehicle.seen" } },
+    emit(VehicleSeen),
   ],
   drift: "inline",
 });

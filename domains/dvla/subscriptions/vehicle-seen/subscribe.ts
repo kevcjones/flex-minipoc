@@ -1,7 +1,6 @@
 import { defineSubscription } from "@flex/sdk/events";
 
-/** React to the vehicle.seen event emitted off the hot path by GET /dvla/v1/vehicle. */
-export default defineSubscription({
-  source: "flex.dvla.vehicle",
-  detailType: "vehicle.seen",
-});
+import { VehicleSeen } from "../../events/v1/vehicle-seen";
+
+/** React to vehicle.seen v1 (imports the producer-owned contract). */
+export default defineSubscription(VehicleSeen);

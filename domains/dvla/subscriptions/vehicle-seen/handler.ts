@@ -1,14 +1,13 @@
+import { onEvent } from "@flex/sdk/events";
 import { udp } from "@flex/sdk/udp";
 
+import { VehicleSeen } from "../../events/v1/vehicle-seen";
+
 /**
- * Reacts to vehicle.seen (emitted off the hot path by GET /dvla/v1/vehicle).
- * Persists the fetched vehicle under the user's vehicle.last slot. This domain
- * owns both the reaction and where it stores the result; the emitter only
- * announced the event.
+ * Reacts to vehicle.seen (a tolerant reader of the producer's contract).
+ * Persists the vehicle under the user's vehicle.last slot. `payload` is typed
+ * from the contract; a producer drift is logged and skipped, not crashed.
  */
-export const handler = async (event: {
-  detail?: { userId?: string; [field: string]: unknown };
-}) => {
-  const { userId, ...car } = event.detail ?? {};
-  await udp.put(`${userId ?? "anonymous"}:vehicle.last`, car);
-};
+export const handler = onEvent(VehicleSeen, async (payload, ctx) => {
+  await udp.put(`${ctx.userId ?? "anonymous"}:vehicle.last`, payload);
+});
