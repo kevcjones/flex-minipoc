@@ -36,15 +36,15 @@ domains/dvla/
 flowchart LR
   C[Client] --> CF[CloudFront]
   CF --> G[Domain gateway]
-  G -->|tier 1: pass-through| U[Upstream]
-  G -->|tier 2: VTL transform, no Lambda| U
-  G -->|tier 3: execution Lambda| L[Lambda] --> U
+  G -->|forward unchanged| U[Upstream]
+  G -->|reshape with VTL, no Lambda| U
+  G -->|run a Lambda| L[Lambda] --> U
   CH[Channel L2] -->|back-door| G
 ```
 
-- **Tier 1 pass-through:** the gateway forwards to the upstream. No compute.
-- **Tier 2 transform:** the gateway reshapes the response with VTL. No Lambda.
-- **Tier 3 execution:** a Lambda runs, and may run effects after it returns.
+- **Pass-through:** the gateway forwards to the upstream. No compute.
+- **Transform:** the gateway reshapes the response with VTL. No Lambda.
+- **Execution:** a Lambda runs, and may run effects after it returns.
 - **Channels (L2)** call L1 over the back-door (the gateway host directly).
 
 ## Contracts and events

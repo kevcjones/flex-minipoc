@@ -29,9 +29,21 @@ domains/<domain>/api/v1/<...>/route.ts   ->   https://<public-host>/<domain>/v1/
 Create `domains/<name>/api/v1/<route>/`. The first route gives you the gateway,
 mounted at `/<name>`. `domains/simple/` is the smallest working example.
 
-## Add an API route (tier 1, pass-through)
+## Which route do I need?
 
-The gateway forwards to an upstream, no compute. No handler needed.
+Start from what you are trying to do:
+
+| You want to | Use | Runs |
+| --- | --- | --- |
+| Hand an upstream resource to the client unchanged | pass-through | nothing |
+| Hand it over, but in a different shape | pass-through + transform | nothing (VTL) |
+| Fetch, combine several calls, validate, or branch | execution | a Lambda |
+| Do a side effect without slowing the response | off the hot path | async |
+
+## Hand an upstream straight to the client
+
+You have a third-party (or 2nd-party) resource and the client should get it as-is.
+The gateway forwards to the upstream; no handler, no compute.
 
 ```ts
 // domains/<d>/api/v1/<thing>/route.ts
@@ -43,10 +55,12 @@ export default defineRoute({
 });
 ```
 
-## Reshape the response in the gateway (tier 2, transform)
+## Same resource, but a different shape
 
-Add `transform` to a pass-through. No Lambda. The field keys are bound to
-`output`, so a typo or dropped field fails the build.
+The upstream returns more (or a different shape) than your client wants, and you
+do not want to pay for a Lambda. Add `transform` to a pass-through; the gateway
+reshapes the response with VTL. The keys are bound to `output`, so a typo or a
+dropped field fails the build.
 
 ```ts
 transform: {
@@ -58,9 +72,10 @@ transform: {
 },
 ```
 
-## Run code (tier 3, execution)
+## Run your own logic
 
-A Lambda. Add a `handler.ts` beside the `route.ts`.
+You need to fetch, combine several calls, validate, or branch. Add a `handler.ts`
+beside the `route.ts`.
 
 ```ts
 // route.ts
@@ -73,27 +88,30 @@ export const handler = createHandler(async (input) => {
 });
 ```
 
-## Write on the hot path (effect)
+## Save a fact once you have responded
 
-Declare an effect on an execution route; it runs inline after the handler.
+You want to record something (a preference) after the handler computes the
+response. Declare an effect on an execution route; it runs inline after the
+handler returns.
 
 ```ts
 effects: [{ udpWrite: { key: "dvla.hasVehicle", value: true } }],
 ```
 
-## Read from the store
+## Read something you saved
 
 ```ts
 // in a handler
 const pref = await udp.get<boolean>(`${input.auth.userId}:dvla.hasVehicle`);
 ```
 
-## Write off the hot path
+## Do work without making the caller wait
 
+A side effect (a durable write, telling other systems) that must not add latency.
 Two ways.
 
-**No Lambda (`publish` route):** API Gateway publishes the request to EventBridge
-via VTL and returns immediately.
+**No Lambda (`publish` route)** maps the request into an event and returns at once;
+API Gateway publishes to EventBridge via VTL.
 
 ```ts
 export default defineRoute({
@@ -102,8 +120,8 @@ export default defineRoute({
 });
 ```
 
-**From a Lambda (`emitEvent` effect):** carries the handler's response (which the
-request-only publish route cannot see).
+**From a Lambda (`emitEvent` effect)** carries the handler's response, which the
+request-only publish route cannot see.
 
 ```ts
 effects: [emit(VehicleSeen)],   // import the event contract
