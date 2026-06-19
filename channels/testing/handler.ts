@@ -109,15 +109,16 @@ const PAGE = `<!doctype html>
       },
       {
         title: '5. Execution + emit off the hot path',
-        blurb: 'The <code>/vehicle</code> call runs two effects: <code>udpWrite</code> inline (panel 3) and <code>emitEvent</code> off the hot path, carrying the fetched vehicle. <em>vehicle-seen before/after</em> shows it land.',
+        blurb: 'The <code>/vehicle</code> call runs two effects: <code>udpWrite</code> inline (panel 3) and <code>emitEvent</code> off the hot path, carrying the fetched vehicle. The consumer stamps <code>seenAt</code>, so <em>before/after</em> show the timestamp advance once the async write lands.',
         diagram: ['sequenceDiagram', '  participant C as Browser', '  participant L as Lambda (/vehicle)', '  participant E as EventBridge', '  participant K as Consumer', '  participant D as UDP', '  C->>L: GET /dvla/v1/vehicle', '  L->>D: udpWrite (inline)', '  L->>E: emitEvent (off hot path)', '  L-->>C: Vehicle', '  E->>K: event (async)', '  K->>D: put vehicle.last'].join('\\n'),
         run: async (add) => {
-          add(await call('vehicle-seen before', 'GET', '/dvla/v1/vehicle-seen'));
+          const before = await call('vehicle-seen before', 'GET', '/dvla/v1/vehicle-seen');
+          add(before);
           add(await call('read + emit', 'GET', '/dvla/v1/vehicle'));
           for (let i = 0; i < 8; i++) {
             const r = await call(i ? 'vehicle-seen after (poll ' + i + ')' : 'vehicle-seen after', 'GET', '/dvla/v1/vehicle-seen');
             add(r);
-            if (r.body.indexOf('"seen":true') >= 0) break;
+            if (r.body.indexOf('"seen":true') >= 0 && r.body !== before.body) break;
             await sleep(700);
           }
         },

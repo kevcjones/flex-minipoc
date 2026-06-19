@@ -9,5 +9,10 @@ import { VehicleSeen } from "../../events/v1/vehicle-seen";
  * from the contract; a producer drift is logged and skipped, not crashed.
  */
 export const handler = onEvent(VehicleSeen, async (payload, ctx) => {
-  await udp.put(`${ctx.userId ?? "anonymous"}:vehicle.last`, payload);
+  // Stamp when we last saw it, so the read-back changes every run (proof the
+  // async write re-ran, not a stale value).
+  await udp.put(`${ctx.userId ?? "anonymous"}:vehicle.last`, {
+    ...payload,
+    seenAt: new Date().toISOString(),
+  });
 });
