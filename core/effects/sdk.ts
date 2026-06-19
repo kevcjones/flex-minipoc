@@ -13,15 +13,18 @@
  * the declarable `Effect` union and the runtime `registry` are derived from it,
  * so adding an effect is one entry and each implementation is fully typed.
  */
+import * as emitEvent from "./emit-event";
 import type { EffectContext } from "./types";
 import * as udpWrite from "./udp-write";
 
 export type { EffectContext };
 export type { UdpWrite } from "./udp-write";
+export type { EmitEvent } from "./emit-event";
 
 /** The single source: effect name -> its config type. */
 interface EffectConfigs {
   udpWrite: udpWrite.UdpWrite;
+  emitEvent: emitEvent.EmitEvent;
 }
 
 /** A declarable effect: a single-key object pairing one effect with its config. */
@@ -37,6 +40,7 @@ type Runner<K extends keyof EffectConfigs> = (
 /** name -> runtime. Typed against EffectConfigs, so each entry takes its config. */
 const registry: { [K in keyof EffectConfigs]: Runner<K> } = {
   udpWrite: udpWrite.run,
+  emitEvent: emitEvent.run,
 };
 
 /**

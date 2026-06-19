@@ -230,6 +230,9 @@ export class DomainStack extends Stack {
         const effects = config?.kind === "execution" ? config.effects : undefined;
         const timeoutSeconds =
           (config?.kind === "execution" ? config.timeout : undefined) ?? 10;
+        // An emitEvent effect publishes to the router; wire the bus + grant.
+        const emits = (effects ?? []).some((e) => "emitEvent" in e);
+        const bus = emits ? eventRouter().bus : undefined;
         const fn = new NodejsFunction(this, `Fn${slug}`, {
           entry: route.handler,
           handler: "handler",
@@ -243,8 +246,10 @@ export class DomainStack extends Stack {
             // gateway host directly, not CloudFront), with the user identity.
             FLEX_FRONT_DOOR_URL: `https://${GATEWAY_HOST}`,
             FLEX_EFFECTS: JSON.stringify(effects ?? []),
+            ...(bus ? { FLEX_EVENT_BUS_NAME: bus.eventBusName } : {}),
           },
         });
+        if (bus) bus.grantPutEventsTo(fn);
 
         resource.addMethod(httpMethod, new LambdaIntegration(fn), authOptions);
       }
