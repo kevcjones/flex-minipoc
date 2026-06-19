@@ -21,6 +21,10 @@ const PAGE = `<!doctype html>
   section { border: 1px solid #8884; border-radius: 10px; padding: 1rem 1.25rem; margin: 1.5rem 0; }
   h2 { margin: 0 0 .5rem; font-size: 1.15rem; }
   .blurb { margin: .25rem 0 1rem; color: #666; }
+  .state { font-size: .95rem; }
+  .tick { font-weight: 700; }
+  .tick.ok { color: #2a8a2a; }
+  .tick.err { color: #c33; }
   .mermaid { background: #8881; border-radius: 8px; padding: 1rem; overflow-x: auto; }
   .pending { color: #888; font-style: italic; }
   .call { border: 1px solid #8883; border-radius: 8px; margin: .6rem 0; overflow: hidden; }
@@ -123,6 +127,7 @@ const PAGE = `<!doctype html>
     const rowHtml = (c) => {
       const cls = c.status >= 200 && c.status < 300 ? 'ok' : 'err';
       return '<div class="call"><div class="call-head">' +
+        '<span class="tick ' + cls + '">' + (cls === 'ok' ? '\\u2713' : '\\u2717') + '</span>' +
         '<span class="method">' + esc(c.method) + '</span>' +
         '<span class="path">' + esc(c.path) + '</span>' +
         '<span class="status ' + cls + '">' + c.status + '</span>' +
@@ -134,7 +139,7 @@ const PAGE = `<!doctype html>
     const app = document.getElementById('app');
     patterns.forEach((p, i) => {
       const sec = document.createElement('section');
-      sec.innerHTML = '<h2>' + esc(p.title) + '</h2><p class="blurb">' + p.blurb + '</p>' +
+      sec.innerHTML = '<h2>' + esc(p.title) + ' <span class="state" id="state' + i + '">\\u23f3</span></h2><p class="blurb">' + p.blurb + '</p>' +
         '<pre class="mermaid">' + esc(p.diagram) + '</pre>' +
         '<div class="calls" id="calls' + i + '"><span class="pending">running...</span></div>';
       app.appendChild(sec);
@@ -148,7 +153,12 @@ const PAGE = `<!doctype html>
         if (first) { box.innerHTML = ''; first = false; }
         box.insertAdjacentHTML('beforeend', rowHtml(c));
       };
-      p.run(add).catch((e) => box.insertAdjacentHTML('beforeend', '<div class="call err">' + esc(String(e)) + '</div>'));
+      p.run(add)
+        .then(() => { document.getElementById('state' + i).textContent = '\\u2705'; })
+        .catch((e) => {
+          document.getElementById('state' + i).textContent = '\\u274c';
+          box.insertAdjacentHTML('beforeend', '<div class="call err">' + esc(String(e)) + '</div>');
+        });
     });
   </script>
 </body>
