@@ -46,15 +46,18 @@ interface Pattern {
 async function runScenario(): Promise<Pattern[]> {
   // Independent reads and the "before" snapshots run concurrently to keep the
   // page fast (each back-door call re-runs the authorizer and hits the upstream).
-  const [user, profile, prefBefore, logBefore] = await Promise.all([
-    call("forwarded verbatim", "GET", "/dvla/v1/user"),
-    call("reshaped in the gateway", "GET", "/dvla/v1/profile"),
-    call("preference before", "GET", "/dvla/v1/preferences"),
-    call("activity before", "GET", "/dvla/v1/activity-log"),
-  ]);
+  const [user, profile, prefBefore, logBefore, vehicleSeenBefore] =
+    await Promise.all([
+      call("forwarded verbatim", "GET", "/dvla/v1/user"),
+      call("reshaped in the gateway", "GET", "/dvla/v1/profile"),
+      call("preference before", "GET", "/dvla/v1/preferences"),
+      call("activity before", "GET", "/dvla/v1/activity-log"),
+      call("vehicle-seen before", "GET", "/dvla/v1/vehicle-seen"),
+    ]);
 
-  // C. execution + sync write, then read back (ordered for before/after).
-  const vehicle = await call("read + sync write", "GET", "/dvla/v1/vehicle");
+  // C. one /vehicle call fires both effects: udpWrite (inline) and emitEvent
+  // (off the hot path). Read the sync side back immediately.
+  const vehicle = await call("read + 2 effects", "GET", "/dvla/v1/vehicle");
   const prefAfter = await call("preference after", "GET", "/dvla/v1/preferences");
 
   // D. off-hot-path write, read back (dynamic before/after via a unique note).
@@ -66,6 +69,13 @@ async function runScenario(): Promise<Pattern[]> {
   for (let i = 0; i < 8 && !logAfter.body.includes(note); i++) {
     await sleep(700);
     logAfter = await call(`activity after (poll ${i + 1})`, "GET", "/dvla/v1/activity-log");
+  }
+
+  // E. the off-hot-path emitEvent from the /vehicle call above: read it back.
+  let vehicleSeenAfter = await call("vehicle-seen after", "GET", "/dvla/v1/vehicle-seen");
+  for (let i = 0; i < 6 && !vehicleSeenAfter.body.includes('"seen":true'); i++) {
+    await sleep(600);
+    vehicleSeenAfter = await call(`vehicle-seen after (poll ${i + 1})`, "GET", "/dvla/v1/vehicle-seen");
   }
 
   return [
@@ -139,6 +149,27 @@ async function runScenario(): Promise<Pattern[]> {
         "  Note over C,D: later GET /activity-log reads it back",
       ].join("\n"),
       calls: [logBefore, publish, logAfter],
+    },
+    {
+      title: "5. Execution + emit off the hot path (carries the response)",
+      blurb:
+        "The single <code>/vehicle</code> call above ran two effects: <code>udpWrite</code> inline (pattern 3) and <code>emitEvent</code> off the hot path. Unlike the request-only publish route, this event carries <em>ctx.data</em> (the vehicle the handler fetched), so the consumer can persist the response. <em>vehicle-seen before/after</em> shows it landing.",
+      diagram: [
+        "sequenceDiagram",
+        "  participant C as Client",
+        "  participant L as Lambda (/vehicle)",
+        "  participant E as EventBridge",
+        "  participant K as Consumer Lambda",
+        "  participant D as UDP (Dynamo)",
+        "  C->>L: GET /dvla/v1/vehicle",
+        "  L->>D: udpWrite hasVehicle (inline)",
+        "  L->>E: emitEvent vehicle.seen (off hot path, carries the car)",
+        "  L-->>C: Vehicle",
+        "  E->>K: event (async)",
+        "  K->>D: put vehicle.last = car",
+        "  Note over C,D: GET /dvla/v1/vehicle-seen reads it back",
+      ].join("\n"),
+      calls: [vehicleSeenBefore, vehicle, vehicleSeenAfter],
     },
   ];
 }
