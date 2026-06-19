@@ -42,13 +42,22 @@ const PAGE = `<!doctype html>
 </head>
 <body>
   <h1>FLEX interaction patterns</h1>
-  <p class="meta">Live from your browser against the gateway, demo user 7. Panels fill in as each call returns. Reload to run again.</p>
+  <p class="meta">Live from your browser against the gateway, user <strong id="who">7</strong>. Panels fill in as each call returns.
+    <label style="margin-left:.5rem">user <input id="u" size="6"></label>
+    <button id="go">run</button>
+  </p>
   <div id="app"></div>
   <script type="module">
     import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
     mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
 
-    const USER = '7';
+    const USER = new URLSearchParams(location.search).get('user') || '7';
+    document.getElementById('who').textContent = USER;
+    const uEl = document.getElementById('u');
+    uEl.value = USER;
+    document.getElementById('go').onclick = () => {
+      location.search = '?user=' + encodeURIComponent((uEl.value || '7').trim());
+    };
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const pretty = (b) => { try { return JSON.stringify(JSON.parse(b), null, 2); } catch (e) { return b; } };
