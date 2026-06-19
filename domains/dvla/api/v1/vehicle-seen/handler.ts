@@ -12,11 +12,13 @@ export const handler = createHandler(async (input) => {
     car?: string;
     car_model?: string;
     car_model_year?: number;
+    seenAt?: string;
   }>(`${userId}:vehicle.last`);
   return {
     seen: last !== undefined,
     car: last?.car,
     model: last?.car_model,
     year: last?.car_model_year,
+    seenAt: last?.seenAt,
   };
 });

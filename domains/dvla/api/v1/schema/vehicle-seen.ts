@@ -10,6 +10,7 @@ export const VehicleSeen = z.object({
   car: z.string().optional(),
   model: z.string().optional(),
   year: z.number().optional(),
+  seenAt: z.string().optional(),
 });
 
 export type VehicleSeen = z.infer<typeof VehicleSeen>;
