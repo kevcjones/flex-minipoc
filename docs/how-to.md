@@ -4,6 +4,26 @@ Recipes for each thing FLEX can do. A route is a folder; adding one is adding a
 folder. Deploy with `npm run deploy` (or `npx cdk deploy <Stack>`); `npm run
 prune` removes deleted domains from AWS.
 
+## How a folder becomes a public URL
+
+The route's folder path is its URL. There is no central list of routes.
+
+```
+domains/<domain>/api/v1/<...>/route.ts   ->   https://<public-host>/<domain>/v1/<...>
+```
+
+- The base path is the **domain folder name**.
+- `api/` is structural and **stripped**; the version and any nested folders below
+  it become the path. So `domains/dvla/api/v1/vehicle/` is `/dvla/v1/vehicle`, and
+  `.../api/v1/driver/summary/` is `/dvla/v1/driver/summary`.
+- The version (`v1`) is a real path segment; a v2 API is a sibling `api/v2/`.
+- The method is `GET`, except a `publish` route, which is `POST`.
+- Two hosts serve the same paths: the **public host** (CloudFront) for clients,
+  and the **gateway host** (the back-door) that channels call directly. The
+  deployed URL is printed as a stack output when you deploy.
+- Channels mount flat at `/<channel>` (no `api/` facet):
+  `channels/mobile/dvla/driving-page/` is `/mobile/dvla/driving-page`.
+
 ## Add a domain
 
 Create `domains/<name>/api/v1/<route>/`. The first route gives you the gateway,
