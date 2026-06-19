@@ -11,7 +11,7 @@ import {
   RequestAuthorizer,
   RestApi,
 } from "aws-cdk-lib/aws-apigateway";
-import { EventBus, Match, Rule } from "aws-cdk-lib/aws-events";
+import { EventBus, Rule } from "aws-cdk-lib/aws-events";
 import { LambdaFunction as LambdaTarget } from "aws-cdk-lib/aws-events-targets";
 import { Role, ServicePrincipal } from "aws-cdk-lib/aws-iam";
 import { Runtime } from "aws-cdk-lib/aws-lambda";
@@ -19,13 +19,15 @@ import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Construct } from "constructs";
 
 import { GATEWAY_HOST, INTERNAL_HOST, PUBLIC_HOST } from "../../config";
+import type { Subscription } from "../../core/events/sdk";
 import type { RouteConfig } from "../../core/routes/sdk";
 import { compilePutEvents, compileToVtl } from "../../core/transform/sdk";
-import { DiscoveredRoute } from "./discover";
+import { DiscoveredRoute, DiscoveredSubscription } from "./discover";
 
 interface DomainStackProps extends StackProps {
   domainName: string;
   routes: DiscoveredRoute[];
+  subscriptions: DiscoveredSubscription[];
 }
 
 // Provisioning a REST API Gateway cache is a paid, always-on cluster and slows
@@ -49,7 +51,7 @@ export class DomainStack extends Stack {
   constructor(scope: Construct, id: string, props: DomainStackProps) {
     super(scope, id, props);
 
-    const { domainName, routes } = props;
+    const { domainName, routes, subscriptions } = props;
 
     const internalBase = `https://${INTERNAL_HOST}`;
     const udpUrl = `${internalBase}/udp`;
@@ -84,34 +86,30 @@ export class DomainStack extends Stack {
       return authorizer;
     };
 
-    // The off-hot-path router, created once when the first publish route appears:
-    // an EventBridge bus, an async consumer that does the durable write, and a
-    // role that lets API Gateway publish to the bus directly (no edge lambda).
-    let router: { bus: EventBus; publishRole: Role } | undefined;
-    const eventRouter = (): { bus: EventBus; publishRole: Role } => {
-      if (!router) {
-        const bus = new EventBus(this, "Bus", {
+    // The off-hot-path router. The bus is created on first use (a publish route,
+    // an emitEvent effect, or a subscription). Producers publish to it; domain
+    // subscriptions (below) own the rules that consume from it.
+    let busInstance: EventBus | undefined;
+    const eventBus = (): EventBus => {
+      if (!busInstance) {
+        busInstance = new EventBus(this, "Bus", {
           eventBusName: `flex-mini-${domainName}`,
         });
-        const consumerFn = new NodejsFunction(this, "EventConsumerFn", {
-          entry: join(__dirname, "..", "..", "core", "events", "handlers", "consumer.ts"),
-          handler: "handler",
-          runtime: Runtime.NODEJS_20_X,
-          timeout: Duration.seconds(10),
-          environment: { FLEX_UDP_URL: udpUrl },
-        });
-        new Rule(this, "EventRule", {
-          eventBus: bus,
-          eventPattern: { source: Match.prefix(`flex.${domainName}`) },
-          targets: [new LambdaTarget(consumerFn)],
-        });
-        const publishRole = new Role(this, "PublishRole", {
+      }
+      return busInstance;
+    };
+
+    // The role that lets API Gateway publish to the bus directly (publish routes,
+    // no edge lambda). Created on first use.
+    let publishRoleInstance: Role | undefined;
+    const publishRole = (): Role => {
+      if (!publishRoleInstance) {
+        publishRoleInstance = new Role(this, "PublishRole", {
           assumedBy: new ServicePrincipal("apigateway.amazonaws.com"),
         });
-        bus.grantPutEventsTo(publishRole);
-        router = { bus, publishRole };
+        eventBus().grantPutEventsTo(publishRoleInstance);
       }
-      return router;
+      return publishRoleInstance;
     };
 
     for (const route of routes) {
@@ -184,7 +182,7 @@ export class DomainStack extends Stack {
         // Write off the hot path: API Gateway publishes to the router
         // (EventBridge) via a VTL request template and returns the ack
         // immediately. No edge lambda; an async consumer does the durable write.
-        const { bus, publishRole } = eventRouter();
+        const bus = eventBus();
         const requestTemplate = compilePutEvents({
           source: config.event.source,
           detailType: config.event.detailType,
@@ -197,7 +195,7 @@ export class DomainStack extends Stack {
             service: "events",
             action: "PutEvents",
             options: {
-              credentialsRole: publishRole,
+              credentialsRole: publishRole(),
               requestParameters: {
                 "integration.request.header.X-Amz-Target":
                   "'AWSEvents.PutEvents'",
@@ -232,7 +230,7 @@ export class DomainStack extends Stack {
           (config?.kind === "execution" ? config.timeout : undefined) ?? 10;
         // An emitEvent effect publishes to the router; wire the bus + grant.
         const emits = (effects ?? []).some((e) => "emitEvent" in e);
-        const bus = emits ? eventRouter().bus : undefined;
+        const bus = emits ? eventBus() : undefined;
         const fn = new NodejsFunction(this, `Fn${slug}`, {
           entry: route.handler,
           handler: "handler",
@@ -259,6 +257,29 @@ export class DomainStack extends Stack {
       });
     }
 
+    // Subscriptions: domain-owned reactions. Each is a rule on the domain bus
+    // matching its declared event, targeting its handler lambda.
+    for (const sub of subscriptions) {
+      const subSlug = slugFor(sub.name);
+      const spec = loadSubscription(sub.subscribe);
+      const subFn = new NodejsFunction(this, `Sub${subSlug}`, {
+        entry: sub.handler,
+        handler: "handler",
+        runtime: Runtime.NODEJS_20_X,
+        timeout: Duration.seconds(10),
+        environment: { FLEX_UDP_URL: udpUrl },
+      });
+      new Rule(this, `SubRule${subSlug}`, {
+        eventBus: eventBus(),
+        eventPattern: { source: [spec.source], detailType: [spec.detailType] },
+        targets: [new LambdaTarget(subFn)],
+      });
+
+      new CfnOutput(this, `Subscription${subSlug}`, {
+        value: `${domainName} on ${spec.source}/${spec.detailType} -> ${sub.name}`,
+      });
+    }
+
     new CfnBasePathMapping(this, "Mapping", {
       domainName: GATEWAY_HOST,
       basePath: domainName,
@@ -266,6 +287,12 @@ export class DomainStack extends Stack {
       stage: api.deploymentStage.stageName,
     });
   }
+}
+
+/** Load a subscribe.ts declaration (source + detailType) at synth. */
+function loadSubscription(path: string): Subscription {
+  const loaded = require(path) as { default?: Subscription };
+  return loaded.default ?? (loaded as unknown as Subscription);
 }
 
 /** Load and normalise a route.ts declaration, or undefined for legacy routes. */

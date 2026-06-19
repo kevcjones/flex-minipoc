@@ -23,8 +23,6 @@ export interface EmitEvent {
   source: string;
   /** EventBridge detail-type, e.g. "vehicle.seen". */
   detailType: string;
-  /** UDP slot the consumer writes the payload under, scoped to the user. */
-  key: string;
 }
 
 const client = new EventBridgeClient({});
@@ -43,11 +41,10 @@ export async function run(cfg: EmitEvent, ctx: EffectContext): Promise<void> {
           EventBusName: busName,
           Source: cfg.source,
           DetailType: cfg.detailType,
-          // userId scopes the consumer's write; key names the slot; the rest is
-          // the response payload the consumer persists.
+          // userId scopes the subscriber's write; the rest is the response
+          // payload. The subscriber decides what to do with it, not the emitter.
           Detail: JSON.stringify({
             userId: ctx.input.auth.userId,
-            key: cfg.key,
             ...payload,
           }),
         },

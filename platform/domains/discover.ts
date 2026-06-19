@@ -13,9 +13,19 @@ export interface DiscoveredRoute {
   handler?: string;
 }
 
+export interface DiscoveredSubscription {
+  // The subscription folder name, e.g. "vehicle-seen".
+  name: string;
+  // subscribe.ts: the defineSubscription declaration (source + detailType).
+  subscribe: string;
+  // handler.ts: the reaction to bundle.
+  handler: string;
+}
+
 export interface DiscoveredDomain {
   name: string;
   routes: DiscoveredRoute[];
+  subscriptions: DiscoveredSubscription[];
 }
 
 // This file lives at platform/domains/, so the contributor planes (domains/,
@@ -41,8 +51,9 @@ export function discoverPlane(planeDir: string): DiscoveredDomain[] {
     .map((name) => ({
       name,
       routes: discoverRoutes(join(planeDir, name), []),
+      subscriptions: discoverSubscriptions(join(planeDir, name)),
     }))
-    .filter((unit) => unit.routes.length > 0);
+    .filter((unit) => unit.routes.length > 0 || unit.subscriptions.length > 0);
 }
 
 export function discoverDomains(): DiscoveredDomain[] {
@@ -73,12 +84,34 @@ function discoverRoutes(dir: string, segments: string[]): DiscoveredRoute[] {
 
   for (const child of readdirSync(dir)) {
     const childPath = join(dir, child);
-    // schema/ holds contracts, not routes; never walk it for routes.
-    if (child === "schema") continue;
+    // schema/ holds contracts and subscriptions/ holds event reactions; neither
+    // is a route, so never walk them for routes.
+    if (child === "schema" || child === "subscriptions") continue;
     if (statSync(childPath).isDirectory()) {
       routes.push(...discoverRoutes(childPath, [...segments, child]));
     }
   }
 
   return routes;
+}
+
+/**
+ *   domains/<domain>/subscriptions/<name>/subscribe.ts   the event to match
+ *   domains/<domain>/subscriptions/<name>/handler.ts     the reaction
+ *
+ * becomes an EventBridge rule + lambda on the domain bus. The reaction is
+ * domain-owned, beside the routes that produce the events.
+ */
+function discoverSubscriptions(domainDir: string): DiscoveredSubscription[] {
+  const root = join(domainDir, "subscriptions");
+  if (!existsSync(root)) return [];
+
+  return readdirSync(root)
+    .filter((entry) => statSync(join(root, entry)).isDirectory())
+    .map((name) => ({
+      name,
+      subscribe: join(root, name, "subscribe.ts"),
+      handler: join(root, name, "handler.ts"),
+    }))
+    .filter((s) => existsSync(s.subscribe) && existsSync(s.handler));
 }

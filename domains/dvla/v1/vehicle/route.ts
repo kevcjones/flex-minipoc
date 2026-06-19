@@ -18,13 +18,7 @@ export default defineRoute({
   output: Vehicle,
   effects: [
     { udpWrite: { key: "dvla.hasVehicle", value: true } },
-    {
-      emitEvent: {
-        source: "flex.dvla.vehicle",
-        detailType: "vehicle.seen",
-        key: "vehicle.last",
-      },
-    },
+    { emitEvent: { source: "flex.dvla.vehicle", detailType: "vehicle.seen" } },
   ],
   drift: "inline",
 });

@@ -20,8 +20,6 @@ export default defineRoute({
     detailType: "activity.recorded",
     detail: {
       fields: {
-        // The consumer keys by `key`; activity lands in its own UDP slot.
-        key: { const: "activity.last" },
         note: "$.note",
       },
     },
