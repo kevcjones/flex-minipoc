@@ -73,7 +73,12 @@ export class DomainStack extends Stack {
           handler: "handler",
           runtime: Runtime.NODEJS_20_X,
           timeout: Duration.seconds(10),
-          environment: { FLEX_UDP_URL: udpUrl },
+          environment: {
+            FLEX_UDP_URL: udpUrl,
+            // Point at the IdP (STS) to turn on real token verification; unset
+            // leaves the demo x-user-id fallback in place.
+            ...oidcEnv(),
+          },
         });
         authorizer = new RequestAuthorizer(this, "Authorizer", {
           handler: authFn,
@@ -287,6 +292,16 @@ export class DomainStack extends Stack {
       stage: api.deploymentStage.stageName,
     });
   }
+}
+
+/** Pass IdP config through to the authorizer if set at deploy time. */
+function oidcEnv(): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const key of ["FLEX_OIDC_ISSUER", "FLEX_OIDC_JWKS_URL", "FLEX_OIDC_AUDIENCE"]) {
+    const value = process.env[key];
+    if (value) env[key] = value;
+  }
+  return env;
 }
 
 /** Load a subscribe.ts declaration (source + detailType) at synth. */
