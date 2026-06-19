@@ -3,6 +3,7 @@ import { join } from "path";
 import { CfnOutput, Duration, Stack, StackProps } from "aws-cdk-lib";
 import {
   AuthorizationType,
+  AwsIntegration,
   CfnBasePathMapping,
   HttpIntegration,
   IResource,
@@ -10,17 +11,23 @@ import {
   RequestAuthorizer,
   RestApi,
 } from "aws-cdk-lib/aws-apigateway";
+import { EventBus, Rule } from "aws-cdk-lib/aws-events";
+import { LambdaFunction as LambdaTarget } from "aws-cdk-lib/aws-events-targets";
+import { Role, ServicePrincipal } from "aws-cdk-lib/aws-iam";
 import { Runtime } from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Construct } from "constructs";
 
 import { GATEWAY_HOST, INTERNAL_HOST, PUBLIC_HOST } from "../../config";
+import type { Subscription } from "../../core/events/sdk";
 import type { RouteConfig } from "../../core/routes/sdk";
-import { DiscoveredRoute } from "./discover";
+import { compilePutEvents, compileToVtl } from "../../core/transform/sdk";
+import { DiscoveredRoute, DiscoveredSubscription } from "./discover";
 
 interface DomainStackProps extends StackProps {
   domainName: string;
   routes: DiscoveredRoute[];
+  subscriptions: DiscoveredSubscription[];
 }
 
 // Provisioning a REST API Gateway cache is a paid, always-on cluster and slows
@@ -35,7 +42,7 @@ const ENABLE_CACHE = false;
  * Each route is one of:
  *  - passthrough: an HTTP integration to an upstream, authorizer injects the
  *    per-user token, no handler lambda.
- *  - execution:   a NodejsFunction from the sibling handler.ts, with post-hooks
+ *  - execution:   a NodejsFunction from the sibling handler.ts, with effects
  *    serialised into its env.
  *  - legacy:      a handler.ts with no route.ts, wired as a plain lambda route
  *    (the original POC shape, still supported).
@@ -44,7 +51,7 @@ export class DomainStack extends Stack {
   constructor(scope: Construct, id: string, props: DomainStackProps) {
     super(scope, id, props);
 
-    const { domainName, routes } = props;
+    const { domainName, routes, subscriptions } = props;
 
     const internalBase = `https://${INTERNAL_HOST}`;
     const udpUrl = `${internalBase}/udp`;
@@ -79,10 +86,38 @@ export class DomainStack extends Stack {
       return authorizer;
     };
 
+    // The off-hot-path router. The bus is created on first use (a publish route,
+    // an emitEvent effect, or a subscription). Producers publish to it; domain
+    // subscriptions (below) own the rules that consume from it.
+    let busInstance: EventBus | undefined;
+    const eventBus = (): EventBus => {
+      if (!busInstance) {
+        busInstance = new EventBus(this, "Bus", {
+          eventBusName: `flex-mini-${domainName}`,
+        });
+      }
+      return busInstance;
+    };
+
+    // The role that lets API Gateway publish to the bus directly (publish routes,
+    // no edge lambda). Created on first use.
+    let publishRoleInstance: Role | undefined;
+    const publishRole = (): Role => {
+      if (!publishRoleInstance) {
+        publishRoleInstance = new Role(this, "PublishRole", {
+          assumedBy: new ServicePrincipal("apigateway.amazonaws.com"),
+        });
+        eventBus().grantPutEventsTo(publishRoleInstance);
+      }
+      return publishRoleInstance;
+    };
+
     for (const route of routes) {
       const slug = slugFor(route.apiPath);
       const config = loadConfig(route);
       const resource = addDeepResource(api.root, route.apiPath);
+      // Publish routes are writes; everything else is a GET in this POC.
+      const httpMethod = config?.kind === "publish" ? "POST" : route.method;
 
       const authOptions =
         config && config.auth !== "none"
@@ -101,16 +136,86 @@ export class DomainStack extends Stack {
             ? { "integration.request.path.id": "context.authorizer.linkingId" }
             : undefined;
 
+        if (config.transform) {
+          // Tier 2: reshape the upstream response in the gateway with VTL
+          // compiled from the route's transform spec. Non-proxy so we can
+          // attach an integration response template. Still no handler lambda.
+          const responseTemplate = compileToVtl(config.transform);
+          resource.addMethod(
+            httpMethod,
+            new HttpIntegration(uri, {
+              httpMethod: method,
+              proxy: false,
+              options: {
+                requestParameters,
+                integrationResponses: [
+                  {
+                    statusCode: "200",
+                    responseTemplates: {
+                      "application/json": responseTemplate,
+                    },
+                  },
+                ],
+              },
+            }),
+            {
+              ...authOptions,
+              ...cacheOptions(config),
+              methodResponses: [{ statusCode: "200" }],
+            },
+          );
+        } else {
+          resource.addMethod(
+            httpMethod,
+            new HttpIntegration(uri, {
+              httpMethod: method,
+              proxy: true,
+              options: { requestParameters },
+            }),
+            {
+              ...authOptions,
+              ...cacheOptions(config),
+            },
+          );
+        }
+      } else if (config?.kind === "publish") {
+        // Write off the hot path: API Gateway publishes to the router
+        // (EventBridge) via a VTL request template and returns the ack
+        // immediately. No edge lambda; an async consumer does the durable write.
+        const bus = eventBus();
+        const requestTemplate = compilePutEvents({
+          source: config.event.source,
+          detailType: config.event.detailType,
+          busName: bus.eventBusName,
+          detail: config.event.detail,
+        });
         resource.addMethod(
-          route.method,
-          new HttpIntegration(uri, {
-            httpMethod: method,
-            proxy: true,
-            options: { requestParameters },
+          httpMethod,
+          new AwsIntegration({
+            service: "events",
+            action: "PutEvents",
+            options: {
+              credentialsRole: publishRole(),
+              requestParameters: {
+                "integration.request.header.X-Amz-Target":
+                  "'AWSEvents.PutEvents'",
+                "integration.request.header.Content-Type":
+                  "'application/x-amz-json-1.1'",
+              },
+              requestTemplates: { "application/json": requestTemplate },
+              integrationResponses: [
+                {
+                  statusCode: "202",
+                  responseTemplates: {
+                    "application/json": '{"accepted":true}',
+                  },
+                },
+              ],
+            },
           }),
           {
             ...authOptions,
-            ...cacheOptions(config),
+            methodResponses: [{ statusCode: "202" }],
           },
         );
       } else {
@@ -120,12 +225,17 @@ export class DomainStack extends Stack {
             `Route ${domainName}/${route.apiPath} needs a handler.ts`,
           );
         }
-        const post = config?.kind === "execution" ? config.post : undefined;
+        const effects = config?.kind === "execution" ? config.effects : undefined;
+        const timeoutSeconds =
+          (config?.kind === "execution" ? config.timeout : undefined) ?? 10;
+        // An emitEvent effect publishes to the router; wire the bus + grant.
+        const emits = (effects ?? []).some((e) => "emitEvent" in e);
+        const bus = emits ? eventBus() : undefined;
         const fn = new NodejsFunction(this, `Fn${slug}`, {
           entry: route.handler,
           handler: "handler",
           runtime: Runtime.NODEJS_20_X,
-          timeout: Duration.seconds(10),
+          timeout: Duration.seconds(timeoutSeconds),
           environment: {
             FLEX_UDP_URL: udpUrl,
             FLEX_TELEMETRY_URL: telemetryUrl,
@@ -133,15 +243,40 @@ export class DomainStack extends Stack {
             // The back-door: channel views reach domain resources here (the
             // gateway host directly, not CloudFront), with the user identity.
             FLEX_FRONT_DOOR_URL: `https://${GATEWAY_HOST}`,
-            FLEX_POST_HOOKS: JSON.stringify(post ?? []),
+            FLEX_EFFECTS: JSON.stringify(effects ?? []),
+            ...(bus ? { FLEX_EVENT_BUS_NAME: bus.eventBusName } : {}),
           },
         });
+        if (bus) bus.grantPutEventsTo(fn);
 
-        resource.addMethod(route.method, new LambdaIntegration(fn), authOptions);
+        resource.addMethod(httpMethod, new LambdaIntegration(fn), authOptions);
       }
 
       new CfnOutput(this, `Route${slug}`, {
-        value: `${route.method} https://${PUBLIC_HOST}/${domainName}/${route.apiPath}`,
+        value: `${httpMethod} https://${PUBLIC_HOST}/${domainName}/${route.apiPath}`,
+      });
+    }
+
+    // Subscriptions: domain-owned reactions. Each is a rule on the domain bus
+    // matching its declared event, targeting its handler lambda.
+    for (const sub of subscriptions) {
+      const subSlug = slugFor(sub.name);
+      const spec = loadSubscription(sub.subscribe);
+      const subFn = new NodejsFunction(this, `Sub${subSlug}`, {
+        entry: sub.handler,
+        handler: "handler",
+        runtime: Runtime.NODEJS_20_X,
+        timeout: Duration.seconds(10),
+        environment: { FLEX_UDP_URL: udpUrl },
+      });
+      new Rule(this, `SubRule${subSlug}`, {
+        eventBus: eventBus(),
+        eventPattern: { source: [spec.source], detailType: [spec.detailType] },
+        targets: [new LambdaTarget(subFn)],
+      });
+
+      new CfnOutput(this, `Subscription${subSlug}`, {
+        value: `${domainName} on ${spec.source}/${spec.detailType} -> ${sub.name}`,
       });
     }
 
@@ -152,6 +287,12 @@ export class DomainStack extends Stack {
       stage: api.deploymentStage.stageName,
     });
   }
+}
+
+/** Load a subscribe.ts declaration (source + detailType) at synth. */
+function loadSubscription(path: string): Subscription {
+  const loaded = require(path) as { default?: Subscription };
+  return loaded.default ?? (loaded as unknown as Subscription);
 }
 
 /** Load and normalise a route.ts declaration, or undefined for legacy routes. */

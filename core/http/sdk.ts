@@ -10,7 +10,7 @@
  * deployable capabilities (udp, telemetry) additionally have stack.ts +
  * handlers/. http is an SDK-only module with no service behind it.
  */
-import { runPostHooks } from "./hooks";
+import { runEffects } from "../effects/sdk";
 
 export interface HandlerInput {
   params: Record<string, string | undefined>;
@@ -23,6 +23,8 @@ export interface HandlerInput {
 export interface HandlerResult {
   status?: number;
   data?: unknown;
+  /** Response content type. Defaults to application/json (data is serialised). */
+  contentType?: string;
 }
 
 type DomainHandler = (
@@ -50,6 +52,16 @@ export function reply(status: number, data?: unknown): HandlerResult {
   return { [CONTROL]: true, status, data } as HandlerResult;
 }
 
+/** Return an HTML response: text/html, body sent as-is rather than JSON. */
+export function html(body: string, status = 200): HandlerResult {
+  return {
+    [CONTROL]: true,
+    status,
+    data: body,
+    contentType: "text/html",
+  } as HandlerResult;
+}
+
 function isHandlerResult(value: unknown): value is HandlerResult {
   return (
     typeof value === "object" &&
@@ -74,16 +86,19 @@ export function createHandler(fn: DomainHandler) {
 
     const result = await fn(input);
 
-    const status = isHandlerResult(result) ? (result.status ?? 200) : 200;
-    const data = isHandlerResult(result) ? result.data : result;
+    const control = isHandlerResult(result);
+    const status = control ? (result.status ?? 200) : 200;
+    const data = control ? result.data : result;
+    const contentType = control ? result.contentType : undefined;
 
-    // Post-hooks declared on the route, run inline after the handler returns.
-    await runPostHooks(process.env.FLEX_POST_HOOKS, { data, input });
+    // Effects declared on the route, run after the handler returns.
+    await runEffects(process.env.FLEX_EFFECTS, { data, input });
 
+    const json = !contentType || contentType.includes("json");
     return {
       statusCode: status,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
+      headers: { "Content-Type": contentType ?? "application/json" },
+      body: json ? JSON.stringify(data) : String(data),
     };
   };
 }

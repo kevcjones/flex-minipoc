@@ -39,6 +39,7 @@ for (const domain of discoverDomains()) {
     env,
     domainName: domain.name,
     routes: domain.routes,
+    subscriptions: domain.subscriptions,
   });
   stack.addDependency(frontDoor);
 }
@@ -51,6 +52,7 @@ for (const channel of discoverChannels()) {
     env,
     domainName: channel.name,
     routes: channel.routes,
+    subscriptions: channel.subscriptions,
   });
   stack.addDependency(frontDoor);
 }
