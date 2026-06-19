@@ -92,11 +92,20 @@ Functionless's failure is the argument for the config-interpreter form: we do
 not need general TypeScript-to-VTL, only config-to-template for a small fixed
 vocabulary.
 
-Status: proposal. The spike builds the config interpreter for the vocabulary
-above and unit-tests its emitted VTL locally with the ToQoz runner. It decides
-whether gateway-level transforms are common enough to justify owning the
-generator, or whether reshapes should just use a tier-3 Lambda and accept the
-cold start.
+Status: spike built (branch `feat/transform-tier`). The config interpreter
+(`@flex/sdk/transform`) compiles the vocabulary above to a VTL integration
+response template, wired by the builder as a non-proxy pass-through (tier 2).
+Verified locally: typecheck, unit tests asserting the emitted VTL per operation,
+and `cdk synth` showing the template in the CloudFormation. The demo is
+`domains/dvla/v1/profile`, which drops `password` and flattens the `User`
+envelope with no Lambda, the case the user/ schema doc flagged as needing
+execution.
+
+Not used: a local Velocity executor (ToQoz). The map-plus-toJson idiom is
+Java-Velocity specific and the JS emulators do not implement it faithfully, so
+full semantic proof is deferred to deploy rather than chased with a fragile
+emulator. The open call the spike informs: are gateway transforms common enough
+to own the generator, or should reshapes just use a tier-3 Lambda.
 
 ## Identity contract
 
@@ -155,8 +164,8 @@ stays at the boundary:
 | Item | Status |
 | --- | --- |
 | Keep REST API | adopt |
-| Three-tier route model | adopt |
-| Transform tier (VTL from DSL) | proposal, spike first |
+| Three-tier route model | adopt, built |
+| Transform tier (VTL from DSL) | spike built and synth-verified, pending deploy |
 | Identity contract (validate external token, map to linking id) | adopt |
 | Async effect pipeline (generalize post-hooks) | adopt, start with udpWrite and emit |
 | Timeouts and circuit breaker | adopt |

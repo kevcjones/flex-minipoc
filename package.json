@@ -8,6 +8,7 @@
   "scripts": {
     "synth": "cdk synth",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --require ts-node/register --test $(find core channels domains platform -name '*.test.ts')",
     "deploy": "cdk deploy --all --require-approval never",
     "prune": "ts-node scripts/prune.ts",
     "prune:dry": "ts-node scripts/prune.ts --dry-run",

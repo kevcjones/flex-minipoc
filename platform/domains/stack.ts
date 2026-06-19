@@ -16,6 +16,7 @@ import { Construct } from "constructs";
 
 import { GATEWAY_HOST, INTERNAL_HOST, PUBLIC_HOST } from "../../config";
 import type { RouteConfig } from "../../core/routes/sdk";
+import { compileToVtl } from "../../core/transform/sdk";
 import { DiscoveredRoute } from "./discover";
 
 interface DomainStackProps extends StackProps {
@@ -101,18 +102,48 @@ export class DomainStack extends Stack {
             ? { "integration.request.path.id": "context.authorizer.linkingId" }
             : undefined;
 
-        resource.addMethod(
-          route.method,
-          new HttpIntegration(uri, {
-            httpMethod: method,
-            proxy: true,
-            options: { requestParameters },
-          }),
-          {
-            ...authOptions,
-            ...cacheOptions(config),
-          },
-        );
+        if (config.transform) {
+          // Tier 2: reshape the upstream response in the gateway with VTL
+          // compiled from the route's transform spec. Non-proxy so we can
+          // attach an integration response template. Still no handler lambda.
+          const responseTemplate = compileToVtl(config.transform);
+          resource.addMethod(
+            route.method,
+            new HttpIntegration(uri, {
+              httpMethod: method,
+              proxy: false,
+              options: {
+                requestParameters,
+                integrationResponses: [
+                  {
+                    statusCode: "200",
+                    responseTemplates: {
+                      "application/json": responseTemplate,
+                    },
+                  },
+                ],
+              },
+            }),
+            {
+              ...authOptions,
+              ...cacheOptions(config),
+              methodResponses: [{ statusCode: "200" }],
+            },
+          );
+        } else {
+          resource.addMethod(
+            route.method,
+            new HttpIntegration(uri, {
+              httpMethod: method,
+              proxy: true,
+              options: { requestParameters },
+            }),
+            {
+              ...authOptions,
+              ...cacheOptions(config),
+            },
+          );
+        }
       } else {
         // execution (route.ts kind=execution) or legacy (handler.ts only)
         if (!route.handler) {

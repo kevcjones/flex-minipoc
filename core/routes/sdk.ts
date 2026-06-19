@@ -7,9 +7,11 @@
  * (platform/domains/stack.ts) imports each at synth and wires a gateway from the
  * declaration.
  *
- * Two kinds:
- *  - passthrough: the gateway forwards to an upstream, no handler lambda.
- *  - execution:   a sibling handler.ts runs, with optional post-hooks.
+ * Three tiers:
+ *  - passthrough:           the gateway forwards to an upstream, no lambda.
+ *  - passthrough+transform: the gateway reshapes the response with VTL, no
+ *                           lambda (tier 2). See @flex/sdk/transform.
+ *  - execution:             a sibling handler.ts runs, with optional post-hooks.
  *
  * The output schema is a Zod contract. It is the single source for the typed
  * consumer (build time) and for drift detection (runtime). It plays no part in
@@ -19,8 +21,10 @@
 import type { ZodTypeAny } from "zod";
 
 import type { AuthStrategy } from "../identity/sdk";
+import type { TransformSpec } from "../transform/sdk";
 
 export type { AuthStrategy };
+export type { TransformSpec };
 
 export interface CachePolicy {
   /** Cache per user (the user id becomes part of the cache key). */
@@ -53,6 +57,11 @@ export interface PassthroughRoute extends BaseRoute {
   kind: "passthrough";
   /** "<METHOD> <uri>", where uri may contain a {placeholder} the builder resolves. */
   target: string;
+  /**
+   * Tier 2: reshape the upstream response in the gateway (VTL compiled from this
+   * spec), no handler lambda. Absent = tier 1, forward the body verbatim.
+   */
+  transform?: TransformSpec;
 }
 
 export interface ExecutionRoute extends BaseRoute {
