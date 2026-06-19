@@ -3,23 +3,15 @@ import test from "node:test";
 
 import { compilePutEvents, compileToVtl } from "./sdk";
 
-test("builds a map and serialises it once with toJson", () => {
+test("emits a JSON object literal (map-free, no toJson)", () => {
   const vtl = compileToVtl({ fields: { id: "$.User.id" } });
-  assert.match(vtl, /^#set\(\$out = \{\}\)/);
-  assert.match(vtl, /\$util\.toJson\(\$out\)\s*$/);
+  assert.doesNotMatch(vtl, /toJson/);
+  assert.match(vtl, /\{\n {2}"id": \$input\.json\('\$\.User\.id'\)\n\}/);
 });
 
-test("string field: reads its source path and puts the output key", () => {
+test("string field reads its source path with $input.json (typed, quoted)", () => {
   const vtl = compileToVtl({ fields: { firstName: "$.User.first_name" } });
-  assert.match(vtl, /#set\(\$v = \$input\.path\('\$\.User\.first_name'\)\)/);
-  assert.match(vtl, /\$out\.put\("firstName", \$v\)/);
-});
-
-test("rename and flatten are just a chosen output key over a nested path", () => {
-  const vtl = compileToVtl({ fields: { firstName: "$.User.first_name" } });
-  // output key differs from the leaf (rename) and the source is nested (flatten)
-  assert.match(vtl, /\$out\.put\("firstName", \$v\)/);
-  assert.match(vtl, /'\$\.User\.first_name'/);
+  assert.match(vtl, /"firstName": \$input\.json\('\$\.User\.first_name'\)/);
 });
 
 test("omit is implicit: an unlisted source field never appears", () => {
@@ -27,11 +19,13 @@ test("omit is implicit: an unlisted source field never appears", () => {
   assert.doesNotMatch(vtl, /password/);
 });
 
-test("default substitutes a literal when the source is empty", () => {
+test("default falls back to a literal when the source path is absent", () => {
   const vtl = compileToVtl({
     fields: { title: { from: "$.User.job_title", default: "Unknown" } },
   });
-  assert.match(vtl, /#if\("\$!v" == ""\)#set\(\$v = "Unknown"\)#end/);
+  assert.match(vtl, /\$input\.path\('\$\.User\.job_title'\)/);
+  assert.match(vtl, /#set\(\$v0 = '"Unknown"'\)#end/);
+  assert.match(vtl, /"title": \$v0/);
 });
 
 test("coalesce tries each path in order, then the default", () => {
@@ -41,23 +35,17 @@ test("coalesce tries each path in order, then the default", () => {
   const aAt = vtl.indexOf("$.a");
   const bAt = vtl.indexOf("$.b");
   assert.ok(aAt !== -1 && bAt !== -1 && aAt < bAt, "paths tried in order");
-  assert.match(vtl, /#set\(\$v = "n\/a"\)/);
+  assert.match(vtl, /#set\(\$v0 = '"n\/a"'\)#end/);
+  assert.match(vtl, /"name": \$v0/);
 });
 
-test("const emits a literal with correct VTL typing", () => {
-  const str = compileToVtl({ fields: { source: { const: "dvla" } } });
-  assert.match(str, /\$out\.put\("source", "dvla"\)/);
-
-  const num = compileToVtl({ fields: { version: { const: 1 } } });
-  assert.match(num, /\$out\.put\("version", 1\)/);
-
-  const bool = compileToVtl({ fields: { live: { const: true } } });
-  assert.match(bool, /\$out\.put\("live", true\)/);
-});
-
-test("a put is captured in $d so only the final JSON is printed", () => {
-  const vtl = compileToVtl({ fields: { id: "$.User.id" } });
-  assert.match(vtl, /#set\(\$d = \$out\.put/);
+test("const emits a JSON literal with correct typing", () => {
+  assert.match(
+    compileToVtl({ fields: { source: { const: "dvla" } } }),
+    /"source": "dvla"/,
+  );
+  assert.match(compileToVtl({ fields: { version: { const: 1 } } }), /"version": 1/);
+  assert.match(compileToVtl({ fields: { live: { const: true } } }), /"live": true/);
 });
 
 test("the profile demo shape exercises pick, omit, default, coalesce and const", () => {
@@ -75,19 +63,17 @@ test("the profile demo shape exercises pick, omit, default, coalesce and const",
       source: { const: "dvla" },
     },
   });
-  // omit: password is never selected
   assert.doesNotMatch(vtl, /password/);
-  // pick/rename/flatten: each output key appears
+  assert.doesNotMatch(vtl, /toJson/);
   for (const key of ["id", "firstName", "lastName", "email"]) {
-    assert.match(vtl, new RegExp(`\\$out\\.put\\("${key}"`));
+    assert.match(vtl, new RegExp(`"${key}": \\$input\\.json`));
   }
-  // default, coalesce, const
-  assert.match(vtl, /#set\(\$v = "Unknown"\)/);
-  assert.match(vtl, /#set\(\$v = "Anonymous"\)/);
-  assert.match(vtl, /\$out\.put\("source", "dvla"\)/);
+  assert.match(vtl, /'"Unknown"'/);
+  assert.match(vtl, /'"Anonymous"'/);
+  assert.match(vtl, /"source": "dvla"/);
 });
 
-test("compilePutEvents builds a PutEvents request: stamped userId, mapped detail, escaped", () => {
+test("compilePutEvents builds a PutEvents request: stamped userId, escaped detail", () => {
   const vtl = compilePutEvents({
     source: "flex.dvla.activity",
     detailType: "activity.recorded",
@@ -97,10 +83,12 @@ test("compilePutEvents builds a PutEvents request: stamped userId, mapped detail
   assert.match(vtl, /"Source": "flex\.dvla\.activity"/);
   assert.match(vtl, /"DetailType": "activity\.recorded"/);
   assert.match(vtl, /"EventBusName": "flex-mini-dvla"/);
-  // the userId is stamped from the authoriser so the consumer can scope it
-  assert.match(vtl, /\$out\.put\("userId", \$context\.authorizer\.userId\)/);
-  // the detail map reads the request body
-  assert.match(vtl, /\$input\.path\('\$\.note'\)/);
-  // Detail must be an escaped JSON string for PutEvents
-  assert.match(vtl, /"Detail": "\$util\.escapeJavaScript\(\$util\.toJson\(\$out\)\)"/);
+  assert.doesNotMatch(vtl, /toJson/);
+  // userId stamped from the authoriser, as an escaped JSON string member
+  assert.match(vtl, /\\"userId\\": \\"\$context\.authorizer\.userId\\"/);
+  // the detail value is read from the request body and escaped
+  assert.match(
+    vtl,
+    /\\"note\\": \\"\$util\.escapeJavaScript\(\$input\.path\('\$\.note'\)\)\\"/,
+  );
 });

@@ -45,26 +45,35 @@ export interface TransformSpec {
 /**
  * Compile a transform spec to a VTL integration response template.
  *
- * The template builds a map and serialises it once with $util.toJson, which
- * gives correct JSON types and escaping for free (rather than concatenating a
- * JSON string by hand, the classic fragile approach). $input.path reads the
- * upstream body. A put into the map is captured in $d so it is not printed; the
- * only output is the final toJson. The inter-directive newlines render as
- * harmless leading whitespace before the JSON, which every parser tolerates.
+ * It builds the JSON object as text, reading each value with $input.json (which
+ * returns the value already correctly typed and quoted, numbers bare and strings
+ * quoted) rather than $util.toJson of a built map. API Gateway's $util.toJson
+ * returns empty for values pulled via $input.path, so the map-and-toJson idiom
+ * silently produces an empty body; $input.json is the reliable primitive. Every
+ * declared field always emits (the spec is bound to the output contract, so all
+ * keys are required), which keeps comma placement static and removes the classic
+ * conditional-comma fragility. Presence is detected with $input.path so default
+ * and coalesce fall back when a source is missing.
  */
 export function compileToVtl(spec: TransformSpec): string {
-  return ["#set($out = {})", ...compileFields(spec), "$util.toJson($out)"].join(
-    "\n",
-  );
+  const preamble: string[] = [];
+  const members: string[] = [];
+  let i = 0;
+  for (const [key, field] of Object.entries(spec.fields)) {
+    const { setup, value } = compileValue(field, i++);
+    preamble.push(...setup);
+    members.push(`  ${JSON.stringify(key)}: ${value}`);
+  }
+  return [...preamble, "{", members.join(",\n"), "}"].join("\n");
 }
 
 /**
  * Compile a VTL request template that publishes the request to EventBridge
  * (PutEvents) off the hot path, no Lambda. The detail spec maps the request
- * (body/params, read via $input) into the event detail, the same vocabulary as
- * compileToVtl. The authoriser userId is stamped in so the async consumer can
- * scope the write. PutEvents needs Detail to be a JSON string, so the built map
- * is serialised with toJson and escaped.
+ * (read via $input) into the event detail; the authoriser userId is stamped in
+ * so the async consumer can scope the write. PutEvents needs Detail to be a JSON
+ * string, so it is built as an escaped string of string-valued members (string
+ * paths via escapeJavaScript, const as a literal).
  */
 export function compilePutEvents(opts: {
   source: string;
@@ -72,66 +81,82 @@ export function compilePutEvents(opts: {
   busName: string;
   detail: TransformSpec;
 }): string {
+  const members = ['\\"userId\\": \\"$context.authorizer.userId\\"'];
+  for (const [key, field] of Object.entries(opts.detail.fields)) {
+    members.push(eventDetailMember(key, field));
+  }
+  const detail = `{ ${members.join(", ")} }`;
   return [
-    "#set($out = {})",
-    '#set($d = $out.put("userId", $context.authorizer.userId))',
-    ...compileFields(opts.detail),
     "{",
     '  "Entries": [{',
     `    "Source": ${JSON.stringify(opts.source)},`,
     `    "DetailType": ${JSON.stringify(opts.detailType)},`,
     `    "EventBusName": ${JSON.stringify(opts.busName)},`,
-    '    "Detail": "$util.escapeJavaScript($util.toJson($out))"',
+    `    "Detail": "${detail}"`,
     "  }]",
     "}",
   ].join("\n");
 }
 
-function compileFields(spec: TransformSpec): string[] {
-  const lines: string[] = [];
-  for (const [key, field] of Object.entries(spec.fields)) {
-    lines.push(...compileField(key, field));
-  }
-  return lines;
-}
-
-function compileField(key: string, field: TransformField): string[] {
-  const k = JSON.stringify(key);
-
+/** A field's VTL: `setup` lines run before the object, `value` goes after the key. */
+function compileValue(
+  field: TransformField,
+  i: number,
+): { setup: string[]; value: string } {
   if (typeof field === "string") {
-    return emitFrom(k, field, undefined);
+    return { setup: [], value: `$input.json('${field}')` };
   }
   if ("const" in field) {
-    return [`#set($d = $out.put(${k}, ${literal(field.const)}))`];
+    return { setup: [], value: literal(field.const) };
   }
   if ("coalesce" in field) {
-    const lines = ['#set($v = "")'];
-    for (const path of field.coalesce) {
-      lines.push(`#if("$!v" == "")#set($v = $input.path('${path}'))#end`);
-    }
+    const v = `$v${i}`;
+    const setup = [`#set(${v} = "")`];
+    field.coalesce.forEach((path, j) => {
+      const p = `p${i}_${j}`;
+      setup.push(`#set($${p} = $input.path('${path}'))`);
+      setup.push(
+        `#if(${v} == "")#if("$!${p}" != "")#set(${v} = $input.json('${path}'))#end#end`,
+      );
+    });
     if (field.default !== undefined) {
-      lines.push(`#if("$!v" == "")#set($v = ${literal(field.default)})#end`);
+      setup.push(`#if(${v} == "")#set(${v} = '${literal(field.default)}')#end`);
     }
-    lines.push(`#if("$!v" != "")#set($d = $out.put(${k}, $v))#end`);
-    return lines;
+    return { setup, value: v };
   }
-  return emitFrom(k, field.from, field.default);
+  // { from, default? }
+  if (field.default === undefined) {
+    return { setup: [], value: `$input.json('${field.from}')` };
+  }
+  const v = `$v${i}`;
+  const p = `$p${i}`;
+  return {
+    setup: [
+      `#set(${p} = $input.path('${field.from}'))`,
+      `#set(${v} = $input.json('${field.from}'))`,
+      `#if("$!${p.slice(1)}" == "")#set(${v} = '${literal(field.default)}')#end`,
+    ],
+    value: v,
+  };
 }
 
-function emitFrom(
-  quotedKey: string,
-  from: string,
-  fallback: TransformLiteral | undefined,
-): string[] {
-  const lines = [`#set($v = $input.path('${from}'))`];
-  if (fallback !== undefined) {
-    lines.push(`#if("$!v" == "")#set($v = ${literal(fallback)})#end`);
+/** A PutEvents detail member as escaped JSON: string paths escaped, const literal. */
+function eventDetailMember(key: string, field: TransformField): string {
+  if (typeof field === "string") {
+    return `\\"${key}\\": \\"$util.escapeJavaScript($input.path('${field}'))\\"`;
   }
-  lines.push(`#if("$!v" != "")#set($d = $out.put(${quotedKey}, $v))#end`);
-  return lines;
+  if ("const" in field) {
+    return `\\"${key}\\": \\"${String(field.const)}\\"`;
+  }
+  if ("from" in field) {
+    return `\\"${key}\\": \\"$util.escapeJavaScript($input.path('${field.from}'))\\"`;
+  }
+  throw new Error(
+    `event detail field "${key}": coalesce is not supported in publish routes`,
+  );
 }
 
-/** Render a TS literal as a VTL literal: strings quoted, numbers/bools bare. */
+/** Render a TS literal as a JSON-text VTL value: strings quoted, numbers/bools bare. */
 function literal(value: TransformLiteral): string {
   if (typeof value === "string") return JSON.stringify(value);
   return String(value);
