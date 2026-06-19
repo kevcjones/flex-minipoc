@@ -18,10 +18,10 @@
  * how the gateway is wired, so a pass-through is fully typed to consumers with
  * no compute behind it.
  */
-import type { ZodTypeAny } from "zod";
+import type { z, ZodTypeAny } from "zod";
 
 import type { AuthStrategy } from "../identity/sdk";
-import type { TransformSpec } from "../transform/sdk";
+import type { TransformField, TransformSpec } from "../transform/sdk";
 
 export type { AuthStrategy };
 export type { TransformSpec };
@@ -46,14 +46,25 @@ export interface UdpWriteHook {
 }
 export type PostHook = UdpWriteHook;
 
-interface BaseRoute {
+interface BaseRoute<O extends ZodTypeAny> {
   auth: AuthStrategy;
-  output: ZodTypeAny;
+  output: O;
   input?: ZodTypeAny;
   cache?: CachePolicy;
 }
 
-export interface PassthroughRoute extends BaseRoute {
+/**
+ * The transform's output-shape map, bound to the route's `output` contract.
+ * Every key must be an output field, so referencing a field that does not exist
+ * (a typo, a renamed schema) or dropping a required one is a compile error, not
+ * a silent runtime surprise. The contract drives what you can map.
+ */
+type TransformFor<O extends ZodTypeAny> = {
+  fields: { [K in keyof z.infer<O> & string]: TransformField };
+};
+
+export interface PassthroughRoute<O extends ZodTypeAny = ZodTypeAny>
+  extends BaseRoute<O> {
   kind: "passthrough";
   /** "<METHOD> <uri>", where uri may contain a {placeholder} the builder resolves. */
   target: string;
@@ -61,10 +72,11 @@ export interface PassthroughRoute extends BaseRoute {
    * Tier 2: reshape the upstream response in the gateway (VTL compiled from this
    * spec), no handler lambda. Absent = tier 1, forward the body verbatim.
    */
-  transform?: TransformSpec;
+  transform?: TransformFor<O>;
 }
 
-export interface ExecutionRoute extends BaseRoute {
+export interface ExecutionRoute<O extends ZodTypeAny = ZodTypeAny>
+  extends BaseRoute<O> {
   kind: "execution";
   /** Hooks run after the handler returns, before the response leaves. */
   post?: PostHook[];
@@ -72,9 +84,16 @@ export interface ExecutionRoute extends BaseRoute {
   drift?: "inline" | "off";
 }
 
-export type RouteConfig = PassthroughRoute | ExecutionRoute;
+export type RouteConfig<O extends ZodTypeAny = ZodTypeAny> =
+  | PassthroughRoute<O>
+  | ExecutionRoute<O>;
 
-/** Identity helper: keeps the literal type while validating the shape. */
-export function defineRoute<T extends RouteConfig>(config: T): T {
+/**
+ * Identity helper: infers the output schema so the transform (and anything else
+ * bound to the contract) is type-checked against it, and validates the shape.
+ */
+export function defineRoute<O extends ZodTypeAny>(
+  config: RouteConfig<O>,
+): RouteConfig<O> {
   return config;
 }

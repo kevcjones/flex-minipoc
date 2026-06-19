@@ -60,17 +60,29 @@ test("a put is captured in $d so only the final JSON is printed", () => {
   assert.match(vtl, /#set\(\$d = \$out\.put/);
 });
 
-test("the profile demo shape drops password and flattens the envelope", () => {
+test("the profile demo shape exercises pick, omit, default, coalesce and const", () => {
   const vtl = compileToVtl({
     fields: {
       id: "$.User.id",
       firstName: "$.User.first_name",
       lastName: "$.User.last_name",
       email: "$.User.email",
+      jobTitle: { from: "$.User.job_title", default: "Unknown" },
+      displayName: {
+        coalesce: ["$.User.first_name", "$.User.email"],
+        default: "Anonymous",
+      },
+      source: { const: "dvla" },
     },
   });
+  // omit: password is never selected
   assert.doesNotMatch(vtl, /password/);
+  // pick/rename/flatten: each output key appears
   for (const key of ["id", "firstName", "lastName", "email"]) {
     assert.match(vtl, new RegExp(`\\$out\\.put\\("${key}"`));
   }
+  // default, coalesce, const
+  assert.match(vtl, /#set\(\$v = "Unknown"\)/);
+  assert.match(vtl, /#set\(\$v = "Anonymous"\)/);
+  assert.match(vtl, /\$out\.put\("source", "dvla"\)/);
 });

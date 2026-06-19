@@ -12,6 +12,12 @@ export const Profile = z.object({
   firstName: z.string(),
   lastName: z.string(),
   email: z.string(),
+  // jobTitle shows `default` (fallback when the upstream omits it).
+  jobTitle: z.string(),
+  // displayName shows `coalesce` (first non-empty of several paths).
+  displayName: z.string(),
+  // source shows `const` (a literal stamped on every response, no upstream).
+  source: z.string(),
 });
 
 export type Profile = z.infer<typeof Profile>;

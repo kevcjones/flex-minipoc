@@ -8,6 +8,16 @@ import { Profile } from "../../schema/profile";
  * flattens and renames to a flat profile, and drops `password` by simply not
  * selecting it. This is the exact case the user/ schema doc flagged as "a
  * reason to use an execution route"; the transform tier does it with no compute.
+ *
+ * The transform keys are bound to the Profile contract: rename a Profile field
+ * or mistype a key here and the build fails, before anything deploys.
+ *
+ * It exercises the whole vocabulary:
+ *  - pick/rename/flatten: id, firstName, lastName, email
+ *  - omit:                password is never selected
+ *  - default:             jobTitle falls back when the upstream omits it
+ *  - coalesce:            displayName is the first non-empty of name then email
+ *  - const:              source is stamped literally
  */
 export default defineRoute({
   kind: "passthrough",
@@ -21,6 +31,12 @@ export default defineRoute({
       firstName: "$.User.first_name",
       lastName: "$.User.last_name",
       email: "$.User.email",
+      jobTitle: { from: "$.User.job_title", default: "Unknown" },
+      displayName: {
+        coalesce: ["$.User.first_name", "$.User.email"],
+        default: "Anonymous",
+      },
+      source: { const: "dvla" },
     },
   },
 });
